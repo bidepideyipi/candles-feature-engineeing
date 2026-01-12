@@ -1,0 +1,3 @@
+"""
+Technical Analysis Helper Package
+"""
