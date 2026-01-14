@@ -76,15 +76,7 @@ class TechnicalIndicatorsCalculator:
             rsi_values = rsi_indicator.rsi()
             indicators[f'{window_name}_rsi'] = float(rsi_values.iloc[-1]) if not rsi_values.empty else np.nan
             
-            # MACD (Moving Average Convergence Divergence)
-            macd_indicator = MACD(close=close_prices, window_slow=26, window_fast=12, window_sign=9)
-            macd_line = macd_indicator.macd()
-            macd_signal = macd_indicator.macd_signal()
-            macd_histogram = macd_indicator.macd_diff()
-            
-            indicators[f'{window_name}_macd'] = float(macd_line.iloc[-1]) if not macd_line.empty else np.nan
-            indicators[f'{window_name}_macd_signal'] = float(macd_signal.iloc[-1]) if not macd_signal.empty else np.nan
-            indicators[f'{window_name}_macd_histogram'] = float(macd_histogram.iloc[-1]) if not macd_histogram.empty else np.nan
+            # MACD removed to reduce complexity - was causing NaN values
             
             # BOLL (Bollinger Bands)
             boll_indicator = BollingerBands(close=close_prices, window=20, window_dev=2)
@@ -118,8 +110,7 @@ class TechnicalIndicatorsCalculator:
         except Exception as e:
             logger.error(f"Error calculating {window_name} window indicators: {e}")
             # Return NaN for all indicators in case of error
-            for indicator_type in ['rsi', 'macd', 'macd_signal', 'macd_histogram', 
-                                 'bb_upper', 'bb_lower', 'bb_middle', 'bb_position', 'price_ma_ratio']:
+            for indicator_type in ['rsi', 'bb_upper', 'bb_lower', 'bb_middle', 'bb_position', 'price_ma_ratio']:
                 indicators[f'{window_name}_{indicator_type}'] = np.nan
         
         return indicators

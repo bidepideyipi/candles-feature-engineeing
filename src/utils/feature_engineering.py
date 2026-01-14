@@ -24,6 +24,7 @@ class FeatureEngineer:
                                 prediction_horizon: int = 24) -> Optional[Dict[str, Any]]:
         """
         Create features from candlestick data for a single prediction point.
+        Preserves both technical indicators AND raw price series data.
         
         Args:
             data: List of candlestick data dictionaries
@@ -60,10 +61,14 @@ class FeatureEngineer:
             logger.warning("Could not calculate classification label")
             return None
         
+        # Preserve raw price series data (the core time series information)
+        raw_price_features = self._extract_raw_price_series(current_data)
+        
         # Combine all features
         features = {}
-        features.update(indicators)
-        features.update(price_features)
+        features.update(indicators)        # Technical indicators as辅助 features
+        features.update(price_features)   # Derived price metrics
+        features.update(raw_price_features)  # Raw price series (核心数据)
         
         # Add timestamp for reference
         features['timestamp'] = int(current_data['timestamp'].iloc[-1])
@@ -104,6 +109,9 @@ class FeatureEngineer:
             if features_dict:
                 target = features_dict.pop('classification_label')
                 timestamp = features_dict.pop('timestamp')
+                
+                # Add timestamp back to features for reference
+                features_dict['timestamp'] = timestamp
                 
                 features_list.append(features_dict)
                 targets_list.append(target)
@@ -161,6 +169,60 @@ class FeatureEngineer:
         
         # Return as DataFrame
         return pd.DataFrame([features])
+    
+    def _extract_raw_price_series(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Extract raw price series data to preserve original time series information.
+        This preserves the essential OHLCV data that technical indicators are derived from.
+        
+        Args:
+            df: DataFrame with OHLCV data for the feature window
+            
+        Returns:
+            Dictionary containing raw price series features
+        """
+        if len(df) < self.feature_window_size:
+            logger.warning(f"Insufficient data for raw price extraction. Need {self.feature_window_size}, got {len(df)}")
+            return {}
+        
+        # Ensure we have exactly feature_window_size records
+        window_df = df.tail(self.feature_window_size).copy()
+        
+        # Extract raw price series (these are the fundamental inputs)
+        raw_features = {}
+        
+        # Recent price levels (most recent first)
+        for i in range(min(24, len(window_df))):  # Last 24 hours
+            idx = -(i + 1)
+            raw_features[f'raw_close_{i+1}h'] = float(window_df['close'].iloc[idx])
+            raw_features[f'raw_high_{i+1}h'] = float(window_df['high'].iloc[idx])
+            raw_features[f'raw_low_{i+1}h'] = float(window_df['low'].iloc[idx])
+            raw_features[f'raw_open_{i+1}h'] = float(window_df['open'].iloc[idx])
+            raw_features[f'raw_volume_{i+1}h'] = float(window_df['volume'].iloc[idx])
+        
+        # Statistical features from raw data
+        raw_features['raw_price_mean'] = float(window_df['close'].mean())
+        raw_features['raw_price_std'] = float(window_df['close'].std())
+        raw_features['raw_price_min'] = float(window_df['close'].min())
+        raw_features['raw_price_max'] = float(window_df['close'].max())
+        
+        # Price changes (原始价格变化)
+        price_changes = window_df['close'].diff().dropna()
+        if len(price_changes) > 0:
+            raw_features['raw_price_change_mean'] = float(price_changes.mean())
+            raw_features['raw_price_change_std'] = float(price_changes.std())
+            raw_features['raw_price_change_sum'] = float(price_changes.sum())
+        
+        # Volume features
+        raw_features['raw_volume_mean'] = float(window_df['volume'].mean())
+        raw_features['raw_volume_std'] = float(window_df['volume'].std())
+        
+        # Price range features
+        raw_features['raw_price_range_mean'] = float((window_df['high'] - window_df['low']).mean())
+        raw_features['raw_price_range_max'] = float((window_df['high'] - window_df['low']).max())
+        
+        logger.debug(f"Extracted {len(raw_features)} raw price series features")
+        return raw_features
 
 # Global instance
 feature_engineer = FeatureEngineer()
