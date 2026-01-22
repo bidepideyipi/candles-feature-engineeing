@@ -1,120 +1,270 @@
-# PRD.md - Feature Engineering Parameters Reference Document
+# PRD: ETH Options Hunter Tool
 
-## 1. Data Sampling Parameters
+## Product Overview
+A professional ETH options trading analysis tool that automates data collection, feature engineering, and machine learning model training for predicting ETH price movements. The system provides quantitative signals for options trading decisions.
 
-### Stride Parameter (采样步长)
-- **Value**: 10
-- **Purpose**: Balance between sample diversity and computational efficiency
-- **Rationale**: 
-  - Reduces temporal correlation between adjacent samples from 99.7% to 96.7% overlap
-  - Effectively filters high-frequency market noise
-  - Prevents overfitting while maintaining adequate training data quantity
-- **Impact Analysis**:
-  ```
-  With 53,073 raw records and 300-period feature window + 24-period prediction horizon:
-  Stride=1  → 52,749 samples (risk: severe overfitting due to 99.7% data overlap)
-  Stride=5  → 10,550 samples (risk: moderate overfitting, 98.3% overlap)  
-  Stride=10 → 5,276 samples (optimal balance, 96.7% overlap)
-  Stride=15 → 3,517 samples (risk: potential underfitting)
-  ```
-- **Financial Rationale**: Cryptocurrency hourly data exhibits strong short-term autocorrelation, requiring sufficient spacing between samples
-- **Industry Alignment**: Consistent with best practices for hourly cryptocurrency modeling
+## Core Architecture
+The system consists of four modular components with independent entry points:
+1. **Data Collector**: OKEx API integration with rate limiting
+2. **Data Storage**: MongoDB persistence layer
+3. **Feature Engine**: Technical indicator calculation and labeling
+4. **ML Trainer**: Model training and evaluation
 
-### Feature Window Size
-- **Value**: 300 periods
-- **Composition**: Multi-timeframe analysis
-  - Short term: 24 periods (1 day)
-  - Medium term: 72 periods (3 days)  
-  - Long term: 168 periods (1 week)
-- **Justification**: Captures comprehensive market dynamics across different time horizons
-- **Memory Consideration**: Balances feature richness with computational feasibility
+## 1. Data Collection Module
 
-### Prediction Horizon
-- **Value**: 24 periods (hours)
-- **Reasoning**: Provides meaningful future return calculation window
-- **Trade-off**: Longer horizons increase predictive uncertainty but improve signal strength
-- **Market Context**: 24-hour horizon aligns with daily trading cycles and institutional reporting
+### API Integration
+- **Exchange**: OKEx
+- **Trading Pair**: ETH-USDT
+- **Timeframe**: 1-hour candles
+- **Batch Size**: 100 records per request
+- **Traversal Direction**: Newest to oldest
 
-## 2. Technical Indicator Parameters
+### Rate Limiting
+- **Constraint**: 20 requests per second
+- **Implementation**: Token bucket algorithm
+- **Buffer**: 50ms delay between requests
 
-### RSI Calculation
-- **Window**: 14 periods
-- **Purpose**: Momentum measurement and trend identification
-- **Application**: Calculated for all three timeframes (short, medium, long)
-- **Standard Practice**: Industry-standard RSI period for balanced sensitivity
+### Data Fields Collected
+```python
+{
+    "timestamp": int,      # Unix timestamp
+    "open": float,         # Opening price
+    "high": float,         # Highest price
+    "low": float,          # Lowest price
+    "close": float,        # Closing price
+    "volume": float,       # Trading volume
+    "quote_volume": float  # Quote currency volume
+}
+```
 
-### Bollinger Bands
-- **Window**: 20 periods
-- **Standard Deviations**: 2
-- **Function**: Volatility assessment and price level evaluation
-- **Components Generated**:
-  - Upper band (BB_Upper)
-  - Lower band (BB_Lower)  
-  - Middle band (BB_Middle)
-  - Band position (0-1 scale)
-  - Price to MA ratio
+### Error Handling
+- Retry mechanism with exponential backoff
+- Data validation and integrity checks
+- Graceful degradation for partial failures
 
-### Price Features
-- **Volatility**: 24-hour rolling standard deviation normalized by mean
-- **Trend**: 24-hour price change percentage
-- **Volume Metrics**: Average volume over feature window
-- **Future Return**: Actual return calculation for supervised learning
+## 2. Data Storage Module
 
-## 3. Data Quality Parameters
+### Database Schema
+```javascript
+// Candlestick Collection
+{
+    "symbol": "ETH-USDT",
+    "timestamp": ISODate,
+    "open": Number,
+    "high": Number,
+    "low": Number,
+    "close": Number,
+    "volume": Number,
+    "quote_volume": Number,
+    "source": "okex"
+}
 
-### Minimum Data Requirements
-- **Training Phase**: Feature Window + Prediction Horizon + 100 buffer periods
-- **Prediction Phase**: Feature Window only (300 periods minimum)
-- **Validation**: Stratified cross-validation to maintain class distribution
+// Feature Collection
+{
+    "timestamp": ISODate,
+    "features": {
+        "rsi_short": Number,
+        "rsi_medium": Number,
+        "rsi_long": Number,
+        "bb_position_short": Number,
+        "bb_position_medium": Number,
+        "bb_position_long": Number,
+        // ... other technical indicators
+    },
+    "label": Int,           // 1-7 classification
+    "future_return": Number // Actual return for validation
+}
+```
 
-### Data Integrity Checks
-- **Missing Value Handling**: Median imputation for numerical features
-- **Duplicate Detection**: Timestamp-based deduplication
-- **Outlier Management**: Winsorization at 99th percentile for extreme values
+### Indexing Strategy
+- Compound index on `[symbol, timestamp]`
+- TTL index for automatic cleanup (optional)
+- Unique constraint on timestamp
 
-### Database Integration
-- **MongoDB Storage**: Persistent candlestick data storage
-- **Indexing Strategy**: Timestamp-based indexing for efficient retrieval
-- **Connection Pooling**: Managed connections to prevent resource exhaustion
+## 3. Feature Engineering Module
 
-## 4. Performance Optimization Parameters
+### Time Windows
+| Parameter | Periods | Duration |
+|-----------|---------|----------|
+| Short Term | 12 | 12 hours |
+| Medium Term | 48 | 2 days |
+| Long Term | 192 | 8 days |
 
-### Batch Processing Configuration
-- **Processing Chunk Size**: Dynamically adjusted based on available memory
-- **Parallel Processing**: Disabled for deterministic reproducibility
-- **Cache Strategy**: In-memory caching of frequently accessed data segments
+### Technical Indicators
+All technical indicators primarily use the common Time Windows configuration defined above, with special exceptions noted.
 
-### Computational Efficiency
-- **Feature Selection**: Automated importance-based feature reduction
-- **Memory Management**: Streaming processing for large datasets
-- **CPU Utilization**: Single-threaded execution for consistent results
+#### RSI (Relative Strength Index)
+- **Calculation**: Standard RSI formula
+- **Application**: Applied to all three timeframes (short, medium, long)
+- **Output**: Three RSI values per sample
 
-## 5. Model Training Parameters
+#### Bollinger Bands
+- **Middle Band**: Simple Moving Average
+- **Upper/Lower Bands**: SMA ± (2.5 × Standard Deviation)
+- **Position Metric**: Normalized price position (0-1 scale)
+- **Application**: Applied to all three timeframes (short, medium, long)
+- **Rationale**: Increased standard deviation multiplier (2.5 vs 2.0) to accommodate ETH's high volatility characteristics
 
-### XGBoost Hyperparameters
-- **n_estimators**: 100 (trees)
-- **max_depth**: 6 (tree depth)
-- **learning_rate**: 0.1 (shrinkage)
-- **subsample**: 0.8 (row sampling)
-- **colsample_bytree**: 0.8 (column sampling)
+#### MACD (Moving Average Convergence Divergence)
+- **Fast Line**: 12-period EMA (using Short Term time window)
+- **Slow Line**: 48-period EMA (using Medium Term time window)
+- **Signal Line**: 9-period EMA of MACD line (special configuration)
+- **Histogram**: MACD line minus Signal line
+- **Application**: Fast Line uses Short Term (12 hours), Slow Line uses Medium Term (2 days)
+- **Special Note**: Hybrid approach combining traditional MACD periods with system time windows for optimal ETH market analysis
 
-### Validation Strategy
-- **Cross-Validation**: 5-fold stratified CV
-- **Evaluation Metric**: Multi-class log-loss and accuracy
-- **Early Stopping**: Implemented to prevent overfitting
+#### EMA (Exponential Moving Average)
+- **Periods**: 12, 48, 192 periods (reusing Time Windows parameters)
+- **Price Ratios**: Current price relative to each EMA
+- **Application**: Applied to all three timeframes using common Time Windows
+- **Purpose**: Trend direction and strength measurement
 
-## 6. Deployment Parameters
+#### ATR (Average True Range)
+- **Window**: 12 periods (aligned with Short Term time window)
+- **Purpose**: Volatility measurement and risk assessment
+- **Application**: Applied to all three timeframes using common Time Windows
+- **Special Note**: Uses 12-period window aligned with Short Term for consistent time frame mapping
 
-### API Configuration
-- **Rate Limiting**: Token bucket algorithm (20 requests per 2 seconds)
-- **Response Timeout**: 30 seconds for data-intensive operations
-- **Retry Logic**: Exponential backoff with maximum 3 attempts
+### Label Generation
+**Classification Labels (1-7)**:
+1. **大幅下跌** (< -5% return)
+2. **中等下跌** (-5% to -2% return)
+3. **小幅下跌** (-2% to -0.5% return)
+4. **基本持平** (-0.5% to +0.5% return)
+5. **小幅上涨** (+0.5% to +2% return)
+6. **中等上涨** (+2% to +5% return)
+7. **大幅上涨** (> +5% return)
 
-### Monitoring Thresholds
-- **Data Freshness**: Alert if data older than 2 hours
-- **Model Performance**: Accuracy degradation alerts (>5% drop)
-- **System Health**: Resource utilization monitoring
+### Feature Vector Composition
+- **Original Features**: 6 (3 RSI + 3 BB Position)
+- **Added Features**: 11 (MACD 4 + EMA 3 + ATR 1 + derived features)
+- **Total Features**: 17 technical indicators
+- **Sequence Length**: 192 periods (longest window)
+- **Label Timing**: 24 hours after feature window end
+
+### Feature Categories
+1. **Momentum Indicators**: RSI(3), MACD histogram(1) = 4 features
+2. **Trend Indicators**: EMA ratios(3), BB position(3) = 6 features
+3. **Volatility Indicators**: ATR(1), BB bands(2) = 3 features
+4. **Derived Features**: Price ratios, normalized values = 4 features
+
+## 4. Machine Learning Module
+
+### Data Preparation
+- **Sampling Strategy**: Configurable stride parameter
+- **Train/Validation Split**: 80%/20% chronological split
+- **Class Balancing**: Stratified sampling to maintain distribution
+
+### Model Configuration
+```python
+XGBoost_Params = {
+    "objective": "multi:softprob",
+    "num_class": 7,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "n_estimators": 200,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "random_state": 42
+}
+```
+
+### Evaluation Metrics
+- **Primary**: Multi-class accuracy
+- **Secondary**: Precision, Recall, F1-score per class
+- **Visualization**: Confusion matrix heatmap
+- **Performance Charts**: 
+  - Training/validation accuracy curves
+  - Class-wise precision/recall bars
+  - Feature importance ranking
+
+## Implementation Requirements
+
+### Class Structure
+```python
+# Module 1: Data Collection
+OkexDataCollector()
+- collect_historical_data(symbol, start_time, end_time)
+- save_to_mongodb(collection_name)
+
+# Module 2: Database Interface
+MongoDataHandler()
+- insert_candles(data_list)
+- get_historical_data(symbol, start_time, end_time)
+- insert_features(feature_data)
+
+# Module 3: Feature Engineering
+FeatureEngineer()
+- calculate_technical_indicators(df)
+- generate_labels(df)
+- create_feature_dataset(df, stride=10)
+
+# Module 4: ML Training
+MLTrainer()
+- prepare_training_data(stride=10)
+- train_model(validation_split=0.2)
+- evaluate_model()
+- plot_performance_report()
+```
+
+### Jupyter Notebook Integration
+Each module provides clean notebook interfaces:
+```python
+# In notebook cells:
+from src.collector import OkexDataCollector
+collector = OkexDataCollector()
+collector.run_collection_job()  # Simple one-liner
+
+from src.trainer import MLTrainer
+trainer = MLTrainer()
+trainer.execute_full_pipeline(stride=15)  # Customizable parameters
+```
+
+### Configuration Management
+Environment variables in `.env`:
+```
+MONGODB_URI=mongodb://localhost:27017
+DATABASE_NAME=eth_options_hunter
+OKEX_API_KEY=your_key
+OKEX_API_SECRET=your_secret
+RATE_LIMIT=20  # requests per second
+```
+
+## Performance Targets
+
+### System Requirements
+- **Data Throughput**: 7,200 candles/hour processing capacity
+- **Storage Efficiency**: ~50MB per year of 1-hour ETH data
+- **Model Training**: < 30 minutes for 10,000 samples
+- **Memory Usage**: < 2GB peak during feature engineering
+
+### Quality Benchmarks
+- **Data Completeness**: > 99.5%
+- **Label Accuracy**: 100% (calculated from actual returns)
+- **Model Accuracy**: > 55% baseline expectation
+- **API Reliability**: > 99% success rate
+
+## Risk Management
+
+### Data Quality Controls
+- Missing data detection and interpolation
+- Outlier identification and handling
+- Duplicate record prevention
+- Data freshness monitoring
+
+### Operational Safeguards
+- Rate limit compliance monitoring
+- Database connection health checks
+- Model performance degradation alerts
+- Backup and recovery procedures
+
+## Future Enhancements
+- Real-time streaming data support
+- Additional technical indicators
+- Ensemble model combinations
+- Backtesting framework integration
+- Web dashboard for visualization
 
 ---
 
-*This document serves as the authoritative reference for all feature engineering parameters and their design rationale.*
+*This PRD defines the complete specification for the ETH Options Hunter Tool v1.0*
