@@ -186,20 +186,18 @@ python test_api.py
 
 ### Programmatic Usage
 ```python
-from src.models.predictor import predictor
+from src.models.xgboost_trainer import xgb_trainer
 
 # Train and save model
-results = predictor.train_and_save_model(
-    max_records=50000,
-    stride=10,
-    prediction_horizon=24
-)
+# Training is now done through notebooks or via the main.py script
+# See notebooks/03_model_training.ipynb for training workflow
 
 # Load trained model
-predictor.load_model()
+xgb_trainer.load_model()
 
 # Make prediction
-prediction = predictor.predict_current_movement()
+# Prediction is now done through notebooks or via the main.py script
+# See notebooks/04_prediction.ipynb for prediction workflow
 if prediction:
     print(f"Predicted class: {prediction['predicted_class']}")
     print(f"Confidence: {prediction['confidence']:.2%}")
@@ -216,8 +214,7 @@ if prediction:
 │   │   ├── okex_fetcher.py      # OKEx API client
 │   │   └── training_data_generator.py  # Training data pipeline
 │   ├── models/
-│   │   ├── predictor.py         # Main prediction interface
-│   │   └── xgboost_trainer.py   # XGBoost model training
+│   │   └── xgboost_trainer.py   # XGBoost model training and prediction
 │   └── utils/
 │       ├── feature_engineering.py    # Feature creation
 │       └── technical_indicators.py   # Technical indicator calculations

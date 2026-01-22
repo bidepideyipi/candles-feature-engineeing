@@ -13,11 +13,18 @@ import logging
 import sys
 import os
 from pathlib import Path
+from datetime import datetime
+import pandas as pd
 
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from src.models.predictor import predictor
+# 导入重构后的模块
+from src.models.xgboost_trainer import xgb_trainer
+from src.data.training_data_generator import training_generator
+from src.data.okex_fetcher import okex_fetcher
+from src.data.mongodb_handler import mongo_handler
+from src.utils.feature_engineering import feature_engineer
 from src.config.settings import config
 
 # Configure logging
@@ -31,6 +38,22 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_prediction_description(predicted_class: int) -> str:
+    """Get human-readable description of the prediction."""
+    descriptions = {
+        -4: "Strong bearish movement (<-2.5%)",
+        -3: "Moderate bearish movement (-2.5% to -1.5%)",
+        -2: "Light bearish movement (-1.5% to -1.0%)",
+        -1: "Very light bearish movement (-1.0% to -0.5%)",
+        0: "Neutral movement (-0.5% to 0.5%)",
+        1: "Very light bullish movement (0.5% to 1.0%)",
+        2: "Light bullish movement (1.0% to 2.5%)",
+        3: "Strong bullish movement (>2.5%)"
+    }
+    return descriptions.get(predicted_class, "Unknown movement")
+
 
 def setup_environment():
     """Setup environment and check prerequisites."""
@@ -49,16 +72,28 @@ def setup_environment():
     logger.info("Environment setup completed.")
 
 def train_model(args):
-    """Train and save the model."""
-    logger.info("Starting model training...")
+    """Train and save the model using the decoupled workflow."""
+    logger.info("Starting model training using decoupled workflow...")
     
     try:
-        results = predictor.train_and_save_model(
+        # Step 1: Generate training data
+        logger.info("Step 1: Generating training data...")
+        features_df, targets_series = training_generator.generate_training_data(
             max_records=args.max_records,
             stride=args.stride,
             prediction_horizon=args.prediction_horizon
         )
         
+        if features_df.empty:
+            raise ValueError("Failed to generate training data")
+        
+        logger.info(f"Generated {len(features_df)} training samples with {len(features_df.columns)} features")
+        
+        # Step 2: Train model
+        logger.info("Step 2: Training XGBoost model...")
+        results = xgb_trainer.train_model(features_df, targets_series)
+        
+        # Step 3: Display results
         print("\n" + "="*50)
         print("TRAINING RESULTS")
         print("="*50)
@@ -73,40 +108,131 @@ def train_model(args):
         
     except Exception as e:
         logger.error(f"Training failed: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 def make_prediction(args):
-    """Make a prediction on current market data."""
-    logger.info("Making prediction...")
+    """Make a prediction on current market data using the decoupled workflow."""
+    logger.info("Making prediction using decoupled workflow...")
     
     # Load model first
-    if not predictor.load_model():
+    if not xgb_trainer.load_model():
         logger.error("Failed to load model. Train a model first using --train")
         sys.exit(1)
     
     try:
-        result = predictor.predict_current_movement()
+        # Step 1: Fetch recent data
+        logger.info("Step 1: Fetching recent candlestick data")
+        recent_raw_data = okex_fetcher.fetch_candlesticks(bar="1H")
         
-        if result:
-            print("\n" + "="*60)
-            print("PRICE MOVEMENT PREDICTION")
-            print("="*60)
-            print(f"Timestamp: {result['timestamp']}")
-            print(f"Current Price: ${result['current_price']:.2f}")
-            print(f"Predicted Movement: {result['prediction_description']}")
-            print(f"Confidence: {result['confidence']:.2%}")
-            print(f"Expected Range: {result['price_range_min']}% to {result['price_range_max']}%")
-            print("\nAll Probabilities:")
-            for class_label, prob in result['all_probabilities'].items():
-                bar = "█" * int(prob * 20)
-                print(f"  Class {class_label:2s}: {prob:6.2%} |{bar:<20}|")
-            print("="*60)
-        else:
-            logger.error("Prediction failed")
+        if not recent_raw_data:
+            logger.error("Failed to fetch recent data")
             sys.exit(1)
+        
+        # Convert to proper format
+        recent_data = okex_fetcher._process_candlestick_data(recent_raw_data)
+        
+        # Step 2: Get historical data from MongoDB to reach required window size
+        logger.info("Step 2: Fetching historical data from MongoDB")
+        db_data = mongo_handler.get_candlestick_data(limit=config.FEATURE_WINDOW_SIZE)
+        
+        # Combine recent and historical data
+        all_data = []
+        
+        # Add historical data (excluding recent duplicates)
+        if db_data:
+            # Convert MongoDB data to the same format
+            for doc in db_data:
+                # Skip if timestamp already in recent data
+                if not any(candle['timestamp'] == doc['timestamp'] for candle in recent_data):
+                    all_data.append({
+                        'timestamp': doc['timestamp'],
+                        'open': doc['open'],
+                        'high': doc['high'],
+                        'low': doc['low'],
+                        'close': doc['close'],
+                        'volume': doc['volume'],
+                        'vol_ccy': doc.get('vol_ccy', 0),
+                        'vol_ccy_quote': doc.get('vol_ccy_quote', 0),
+                        'confirm': doc.get('confirm', 1)
+                    })
+        
+        # Add recent data
+        all_data.extend(recent_data)
+        
+        # Sort by timestamp
+        all_data.sort(key=lambda x: x['timestamp'])
+        
+        logger.info(f"Total data points: {len(all_data)}")
+        
+        # Step 3: Prepare features
+        logger.info("Step 3: Preparing features for prediction")
+        features_df = feature_engineer.prepare_prediction_features(all_data)
+        
+        if features_df is None or features_df.empty:
+            logger.error("Failed to prepare features for prediction")
+            sys.exit(1)
+        
+        # Remove timestamp column if present (not used for prediction)
+        if 'timestamp' in features_df.columns:
+            features_df = features_df.drop('timestamp', axis=1)
+        
+        # Step 4: Make prediction
+        logger.info("Step 4: Making prediction")
+        predictions, probabilities = xgb_trainer.predict(features_df)
+        
+        # Get the prediction and confidence
+        predicted_class = int(predictions[0])
+        class_probabilities = probabilities[0]
+        
+        # Get confidence for the predicted class
+        # Classes are encoded as 0-7 internally, but represent -4 to 3
+        predicted_class_index = predicted_class + 4  # Convert to 0-7 index
+        confidence = float(class_probabilities[predicted_class_index])
+        
+        # Get current price
+        current_price = float(all_data[-1]['close'])
+        
+        # Get price range for the predicted class
+        min_range, max_range = config.CLASSIFICATION_THRESHOLDS[predicted_class]
+        
+        # Create result dictionary
+        result = {
+            'timestamp': datetime.now().isoformat(),
+            'current_price': current_price,
+            'predicted_class': predicted_class,
+            'confidence': confidence,
+            'price_range_min': min_range,
+            'price_range_max': max_range,
+            'prediction_description': _get_prediction_description(predicted_class),
+            'all_probabilities': {
+                str(label): float(class_probabilities[label + 4]) 
+                for label in sorted(config.CLASSIFICATION_THRESHOLDS.keys())
+            }
+        }
+        
+        logger.info(f"Prediction completed: Class {predicted_class} with {confidence:.2%} confidence")
+        
+        # Display results
+        print("\n" + "="*60)
+        print("PRICE MOVEMENT PREDICTION")
+        print("="*60)
+        print(f"Timestamp: {result['timestamp']}")
+        print(f"Current Price: ${result['current_price']:.2f}")
+        print(f"Predicted Movement: {result['prediction_description']}")
+        print(f"Confidence: {result['confidence']:.2%}")
+        print(f"Expected Range: {result['price_range_min']}% to {result['price_range_max']}%")
+        print("\nAll Probabilities:")
+        for class_label, prob in result['all_probabilities'].items():
+            bar = "█" * int(prob * 20)
+            print(f"  Class {class_label:2s}: {prob:6.2%} |{bar:<20}|")
+        print("="*60)
             
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 def test_system(args):
