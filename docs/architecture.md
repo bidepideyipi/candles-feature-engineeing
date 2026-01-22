@@ -103,7 +103,7 @@ class OkexDataCollector:
 {
     "_id": ObjectId,
     "timestamp": ISODate,
-    "feature_vector": Array,  // 168×6的特征矩阵
+    "feature_vector": Array,  // 192×17的特征矩阵
     "label": Number,          // 1-7分类标签
     "future_return": Number,  // 实际收益率
     "processed_at": ISODate
@@ -128,9 +128,9 @@ db.features.createIndex({"label": 1})
 class FeatureEngineer:
     def __init__(self):
         self.time_windows = {
-            'short': 24,    # 1天
-            'medium': 72,   # 3天
-            'long': 168     # 1周
+            'short': 12,    # 12小时
+            'medium': 48,   # 2天
+            'long': 192     # 8天
         }
         
     def calculate_rsi(self, prices, window):
@@ -155,15 +155,15 @@ class FeatureEngineer:
 #### 特征向量构成
 ```
 特征维度: [时间序列长度] × [技术指标数量]
-         168 × 6 = 1008维
+         192 × 17 = 3264维
 
 具体组成:
-- RSI_short[168]: 短期RSI时间序列
-- RSI_medium[168]: 中期RSI时间序列  
-- RSI_long[168]: 长期RSI时间序列
-- BB_pos_short[168]: 短期布林带位置序列
-- BB_pos_medium[168]: 中期布林带位置序列
-- BB_pos_long[168]: 长期布林带位置序列
+- RSI指标: 3个 (短期/中期/长期)
+- 布林带指标: 6个 (上轨/中轨/下轨/位置/价格比率 × 3时间窗)
+- MACD指标: 4个 (快线/慢线/信号线/柱状图)
+- EMA指标: 3个 (12/48/192期价格比率)
+- ATR指标: 1个 (12期波动率)
+- 总计: 17个核心技术指标
 ```
 
 ### 3.4 机器学习模块 (ml_trainer)
