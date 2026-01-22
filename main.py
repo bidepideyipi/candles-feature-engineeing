@@ -1,5 +1,209 @@
 #!/usr/bin/env python3
 """
+ETH期权猎手工具主程序入口
+支持数据采集、特征工程、模型训练等功能
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
+
+from src.collector.data_collector import data_collector
+from src.database.mongo_handler import mongo_handler
+from src.feature_engineering.create_feature_dataset import feature_engineer
+from src.ml_training.model_trainer import xgb_trainer
+from src.config.settings import config
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('eth_options_hunter.log')
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+def collect_data(args):
+    """
+    Collect data from OKEx API and store in MongoDB.
+    """
+    logger.info(f"Starting data collection for {args.symbol} ({args.days} days)")
+    
+    # Collect data
+    data = data_collector.run_collection_job(args.symbol, args.days)
+    
+    if data:
+        # Store in MongoDB
+        if mongo_handler.connect():
+            success = mongo_handler.insert_candlestick_data(data)
+            if success:
+                logger.info("Data successfully stored in MongoDB")
+            mongo_handler.close()
+        else:
+            logger.error("Failed to connect to MongoDB")
+    else:
+        logger.error("No data collected")
+
+def engineer_features(args):
+    """
+    Engineer features from collected data.
+    """
+    logger.info("Starting feature engineering")
+    
+    # Load data from MongoDB
+    if mongo_handler.connect():
+        data = mongo_handler.get_candlestick_data(args.limit)
+        mongo_handler.close()
+        
+        if data:
+            # Create training dataset
+            features_df, targets_series = feature_engineer.create_training_dataset(
+                data, 
+                stride=args.stride,
+                prediction_horizon=args.horizon
+            )
+            
+            if not features_df.empty:
+                # Save to CSV
+                features_df.to_csv('training_features.csv', index=False)
+                targets_series.to_csv('training_targets.csv', index=False, header=True)
+                logger.info("Features successfully created and saved")
+            else:
+                logger.error("Failed to create features")
+        else:
+            logger.error("No data available in MongoDB")
+    else:
+        logger.error("Failed to connect to MongoDB")
+
+def train_model(args):
+    """
+    Train XGBoost model with engineered features.
+    """
+    logger.info("Starting model training")
+    
+    try:
+        # Load features and targets
+        import pandas as pd
+        
+        features_df = pd.read_csv('training_features.csv')
+        targets_series = pd.read_csv('training_targets.csv', header=None, names=['target'])['target']
+        
+        # Ensure consistent lengths
+        min_length = min(len(features_df), len(targets_series))
+        if len(features_df) != len(targets_series):
+            logger.warning(f"Inconsistent sample counts: features={len(features_df)}, targets={len(targets_series)}")
+            features_df = features_df.iloc[:min_length]
+            targets_series = targets_series.iloc[:min_length]
+            logger.info(f"Adjusted to {min_length} samples")
+        
+        # Remove timestamp column if present
+        if 'timestamp' in features_df.columns:
+            features_df = features_df.drop('timestamp', axis=1)
+        
+        # Train model
+        results = xgb_trainer.execute_full_pipeline(
+            features_df, 
+            targets_series,
+            plot_report=args.plot
+        )
+        
+        if results:
+            logger.info("Model training completed successfully")
+            logger.info(f"Validation accuracy: {results.get('accuracy', 0):.4f}")
+            logger.info(f"Cross-validation accuracy: {results.get('cv_mean_accuracy', 0):.4f} ± {results.get('cv_std_accuracy', 0):.4f}")
+        
+    except Exception as e:
+        logger.error(f"Error during model training: {e}")
+
+def predict(args):
+    """
+    Make predictions with trained model.
+    """
+    logger.info("Starting prediction")
+    
+    # Load recent data
+    if mongo_handler.connect():
+        data = mongo_handler.get_candlestick_data(config.FEATURE_WINDOW_SIZE)
+        mongo_handler.close()
+        
+        if data:
+            # Prepare features
+            features_df = feature_engineer.prepare_prediction_features(data)
+            
+            if features_df is not None:
+                # Load model
+                if xgb_trainer.load_model():
+                    # Predict
+                    predictions, probabilities = xgb_trainer.predict(features_df)
+                    
+                    if len(predictions) > 0:
+                        prediction = predictions[0]
+                        confidence = probabilities[0].max()
+                        
+                        logger.info(f"Prediction result: {prediction}")
+                        logger.info(f"Confidence: {confidence:.4f}")
+                        logger.info(f"Probabilities: {probabilities[0].tolist()}")
+                    else:
+                        logger.error("Prediction failed")
+                else:
+                    logger.error("Failed to load model")
+            else:
+                logger.error("Failed to prepare features")
+        else:
+            logger.error("No recent data available")
+    else:
+        logger.error("Failed to connect to MongoDB")
+
+def main():
+    """
+    Main function with command-line argument parsing.
+    """
+    parser = argparse.ArgumentParser(description='ETH期权猎手工具')
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Collect command
+    collect_parser = subparsers.add_parser('collect', help='Collect data from OKEx API')
+    collect_parser.add_argument('--symbol', default='ETH-USDT-SWAP', help='Trading symbol')
+    collect_parser.add_argument('--days', type=int, default=365, help='Number of days to collect')
+    
+    # Engineer command
+    engineer_parser = subparsers.add_parser('engineer', help='Engineer features from collected data')
+    engineer_parser.add_argument('--stride', type=int, default=10, help='Stride for sliding window')
+    engineer_parser.add_argument('--horizon', type=int, default=24, help='Prediction horizon')
+    engineer_parser.add_argument('--limit', type=int, default=10000, help='Data limit from MongoDB')
+    
+    # Train command
+    train_parser = subparsers.add_parser('train', help='Train XGBoost model')
+    train_parser.add_argument('--plot', action='store_true', help='Generate performance plots')
+    
+    # Predict command
+    predict_parser = subparsers.add_parser('predict', help='Make predictions with trained model')
+    
+    args = parser.parse_args()
+    
+    if args.command == 'collect':
+        collect_data(args)
+    elif args.command == 'engineer':
+        engineer_features(args)
+    elif args.command == 'train':
+        train_model(args)
+    elif args.command == 'predict':
+        predict(args)
+    else:
+        parser.print_help()
+
+if __name__ == '__main__':
+    main()
+#!/usr/bin/env python3
+"""
 Main entry point for the Technical Analysis Helper.
 
 Provides command-line interface for:

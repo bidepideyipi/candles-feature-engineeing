@@ -32,20 +32,20 @@ class Config:
     
     # Time windows for technical indicators (in hours)
     TIME_WINDOWS = {
-        'short': 24,    # 24 hours
-        'medium': 72,   # 3 days (72 hours)
-        'long': 168     # 1 week (168 hours)
+        'short': 12,     # 12 hours
+        'medium': 48,    # 2 days (48 hours)
+        'long': 192      # 8 days (192 hours)
     }
     
     # Price movement classification thresholds (in percentage)
     CLASSIFICATION_THRESHOLDS = {
-        -3: (-100, -5.5),    # <-5.5%
-        -2: (-5.5, -2.5),    # -2.5% to -5.0%
-        -1: (-2.5, -0.5),    # -0.5% to -2.5%
-        0: (-0.5, 0.5),      # -0.5% to 0.5%
-        1: (0.5, 2.5),       # 0.5% to 2.5%
-        2: (2.5, 5.5),       # 2.5% to 5.5%
-        3: (5.5, 100)        # >5.5%
+        1: (-100, -5.0),    # <-5%
+        2: (-5.0, -2.0),    # -5% to -2%
+        3: (-2.0, -0.5),    # -2% to -0.5%
+        4: (-0.5, 0.5),     # -0.5% to 0.5%
+        5: (0.5, 2.0),       # 0.5% to 2.0%
+        6: (2.0, 5.0),       # 2.0% to 5.0%
+        7: (5.0, 100)        # >5%
     }
 
 # Create a global config instance
