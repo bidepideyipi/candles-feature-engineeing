@@ -12,9 +12,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from src.data.okex_fetcher import okex_fetcher
+from src.collect.okex_fetcher import okex_fetcher
 from src.database.mongo_handler import mongo_handler
-from src.feature_engineering.create_feature_dataset import feature_engineer
+from src.feature.feature_engineering import feature_engineer
 from src.ml_training.model_trainer import xgb_trainer
 from src.config.settings import config
 
@@ -57,7 +57,7 @@ def engineer_features(args):
     
     # Load data from MongoDB
     if mongo_handler.connect():
-        data = mongo_handler.get_candlestick_data(args.limit)
+        data = mongo_handler.get_candlestick_data(args.limit, inst_id="ETH-USDT-SWAP")
         mongo_handler.close()
         
         if data:
@@ -128,7 +128,7 @@ def predict(args):
     
     # Load recent data
     if mongo_handler.connect():
-        data = mongo_handler.get_candlestick_data(config.FEATURE_WINDOW_SIZE)
+        data = mongo_handler.get_candlestick_data(config.FEATURE_WINDOW_SIZE, inst_id="ETH-USDT-SWAP")
         mongo_handler.close()
         
         if data:
@@ -223,10 +223,10 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 # 导入重构后的模块
 from src.models.xgboost_trainer import xgb_trainer
-from src.data.training_data_generator import training_generator
-from src.data.okex_fetcher import okex_fetcher
-from src.data.mongodb_handler import mongo_handler
-from src.utils.feature_engineering import feature_engineer
+from src.collect.training_data_generator import training_generator
+from src.collect.okex_fetcher import okex_fetcher
+from src.collect.mongodb_handler import mongo_handler
+from src.feature.feature_engineering import feature_engineer
 from src.config.settings import config
 
 # Configure logging
@@ -337,7 +337,7 @@ def make_prediction(args):
         
         # Step 2: Get historical data from MongoDB to reach required window size
         logger.info("Step 2: Fetching historical data from MongoDB")
-        db_data = mongo_handler.get_candlestick_data(limit=config.FEATURE_WINDOW_SIZE)
+        db_data = mongo_handler.get_candlestick_data(limit=config.FEATURE_WINDOW_SIZE, inst_id="ETH-USDT-SWAP")
         
         # Combine recent and historical data
         all_data = []
@@ -461,7 +461,7 @@ def test_system(args):
     
     # Test 3: OKEx API connectivity (optional)
     try:
-        from src.data.okex_fetcher import okex_fetcher
+        from src.collect.okex_fetcher import okex_fetcher
         price = okex_fetcher.get_latest_price()
         if price:
             print(f"✓ OKEx API connectivity (Latest ETH price: ${price:.2f})")
@@ -472,7 +472,7 @@ def test_system(args):
     
     # Test 4: MongoDB connection (optional)
     try:
-        from src.data.mongodb_handler import mongo_handler
+        from src.collect.mongodb_handler import mongo_handler
         if mongo_handler.connect():
             print("✓ MongoDB connection successful")
             mongo_handler.close()

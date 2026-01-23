@@ -8,7 +8,7 @@ import numpy as np
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 
-from ..utils.technical_indicators import tech_calculator
+from .technical_indicators import tech_calculator
 from ..config.settings import config
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,7 @@ class FeatureEngineer:
         
         return features
     
+    # 创建训练数据集
     def create_training_dataset(self, data: List[Dict[str, Any]], 
                               stride: int = 1,
                               prediction_horizon: int = 24) -> Tuple[pd.DataFrame, pd.Series]:
