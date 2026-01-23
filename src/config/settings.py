@@ -24,7 +24,6 @@ class Config:
     
     # OKEx API Configuration
     OKEX_API_BASE_URL = os.getenv('OKEX_API_BASE_URL', 'https://www.okx.com')
-    INST_ID = os.getenv('INST_ID', 'ETH-USDT-SWAP')
     
     # Model Configuration
     MODEL_SAVE_PATH = os.getenv('MODEL_SAVE_PATH', 'models/xgboost_model.json')

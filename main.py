@@ -12,7 +12,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from src.collector.data_collector import data_collector
+from src.data.okex_fetcher import okex_fetcher
 from src.database.mongo_handler import mongo_handler
 from src.feature_engineering.create_feature_dataset import feature_engineer
 from src.ml_training.model_trainer import xgb_trainer
@@ -36,20 +36,18 @@ def collect_data(args):
     """
     logger.info(f"Starting data collection for {args.symbol} ({args.days} days)")
     
-    # Collect data
-    data = data_collector.run_collection_job(args.symbol, args.days)
+    # Calculate approximate number of 1-hour candles for the given days
+    # 24 hours/day * number of days
+    max_records = args.days * 24
     
-    if data:
-        # Store in MongoDB
-        if mongo_handler.connect():
-            success = mongo_handler.insert_candlestick_data(data)
-            if success:
-                logger.info("Data successfully stored in MongoDB")
-            mongo_handler.close()
-        else:
-            logger.error("Failed to connect to MongoDB")
+    # Collect and store data directly using okex_fetcher
+    # Note: okex_fetcher automatically stores data in MongoDB
+    success = okex_fetcher.fetch_historical_data(max_records=max_records, check_duplicates=False)
+    
+    if success:
+        logger.info("Data collection and storage completed successfully")
     else:
-        logger.error("No data collected")
+        logger.error("Data collection failed")
 
 def engineer_features(args):
     """
@@ -328,14 +326,14 @@ def make_prediction(args):
     try:
         # Step 1: Fetch recent data
         logger.info("Step 1: Fetching recent candlestick data")
-        recent_raw_data = okex_fetcher.fetch_candlesticks(bar="1H")
+        recent_raw_data = okex_fetcher.fetch_candlesticks(inst_id="ETH-USDT-SWAP", bar="1H")
         
         if not recent_raw_data:
             logger.error("Failed to fetch recent data")
             sys.exit(1)
         
         # Convert to proper format
-        recent_data = okex_fetcher._process_candlestick_data(recent_raw_data)
+        recent_data = okex_fetcher._process_candlestick_data(recent_raw_data, inst_id="ETH-USDT-SWAP")
         
         # Step 2: Get historical data from MongoDB to reach required window size
         logger.info("Step 2: Fetching historical data from MongoDB")
