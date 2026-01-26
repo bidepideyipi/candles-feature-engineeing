@@ -14,8 +14,7 @@ class MACDCalculator:
     def __init__(self, 
                  fast_window: int = 12, 
                  slow_window: int = 26, 
-                 signal_window: int = 9,
-                 fillna: bool = False):
+                 signal_window: int = 9):
         """
         Initialize MACD calculator
         
@@ -23,12 +22,10 @@ class MACDCalculator:
             fast_window: Fast EMA period (default: 12)
             slow_window: Slow EMA period (default: 26)
             signal_window: Signal line EMA period (default: 9)
-            fillna: Whether to fill NaN values (default: False)
         """
         self.fast_window = fast_window
         self.slow_window = slow_window
         self.signal_window = signal_window
-        self.fillna = fillna
     
     def calculate(self, close_prices: Union[pd.Series, list, np.ndarray]) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
@@ -57,12 +54,6 @@ class MACDCalculator:
         # Calculate histogram
         histogram = macd_line - signal_line
         
-        # Fill NaN values if requested
-        if self.fillna:
-            macd_line = macd_line.fillna(0)
-            signal_line = signal_line.fillna(0)
-            histogram = histogram.fillna(0)
-        
         return macd_line, signal_line, histogram
     
     def get_last_values(self, close_prices: Union[pd.Series, list, np.ndarray]) -> Tuple[float, float, float]:
@@ -88,8 +79,7 @@ class MACDCalculator:
 def calculate_macd(close_prices: Union[pd.Series, list, np.ndarray],
                    fast_window: int = 12,
                    slow_window: int = 26,
-                   signal_window: int = 9,
-                   fillna: bool = False) -> Tuple[pd.Series, pd.Series, pd.Series]:
+                   signal_window: int = 9) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     Convenience function to calculate MACD
     
@@ -98,7 +88,6 @@ def calculate_macd(close_prices: Union[pd.Series, list, np.ndarray],
         fast_window: Fast EMA period (default: 12)
         slow_window: Slow EMA period (default: 26)
         signal_window: Signal line EMA period (default: 9)
-        fillna: Whether to fill NaN values (default: False)
         
     Returns:
         Tuple of (macd_line, signal_line, histogram)
@@ -106,8 +95,7 @@ def calculate_macd(close_prices: Union[pd.Series, list, np.ndarray],
     calculator = MACDCalculator(
         fast_window=fast_window,
         slow_window=slow_window,
-        signal_window=signal_window,
-        fillna=fillna
+        signal_window=signal_window
     )
     return calculator.calculate(close_prices)
 
