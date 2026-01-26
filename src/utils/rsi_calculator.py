@@ -5,22 +5,20 @@ Independent RSI calculation utility
 
 import pandas as pd
 import numpy as np
-from typing import Union, Optional
+from typing import Union
 
 
 class RSICalculator:
     """Independent RSI calculator with customizable parameters"""
     
-    def __init__(self, window: int = 14, fillna: bool = False):
+    def __init__(self, window: int = 14):
         """
         Initialize RSI calculator
         
         Args:
             window: Number of periods for RSI calculation (default: 14)
-            fillna: Whether to fill NaN values (default: False)
         """
         self.window = window
-        self.fillna = fillna
     
     def calculate(self, close_prices: Union[pd.Series, list, np.ndarray]) -> pd.Series:
         """
@@ -59,10 +57,6 @@ class RSICalculator:
         # Handle division by zero
         rsi = rsi.replace([np.inf, -np.inf], np.nan)
         
-        # Fill NaN values if requested
-        if self.fillna:
-            rsi = rsi.fillna(50)
-        
         return rsi
     
     def get_last_value(self, close_prices: Union[pd.Series, list, np.ndarray]) -> float:
@@ -81,20 +75,18 @@ class RSICalculator:
 
 # Convenience functions
 def calculate_rsi(close_prices: Union[pd.Series, list, np.ndarray], 
-                  window: int = 14, 
-                  fillna: bool = False) -> pd.Series:
+                  window: int = 14) -> pd.Series:
     """
     Convenience function to calculate RSI
     
     Args:
         close_prices: Closing prices series
         window: Number of periods (default: 14)
-        fillna: Whether to fill NaN values (default: False)
         
     Returns:
         pandas Series with RSI values
     """
-    calculator = RSICalculator(window=window, fillna=fillna)
+    calculator = RSICalculator(window=window)
     return calculator.calculate(close_prices)
 
 
