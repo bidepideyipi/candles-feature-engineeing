@@ -6,7 +6,6 @@ Test MACD calculation accuracy and edge cases
 import sys
 from pathlib import Path
 import numpy as np
-import pandas as pd
 import pytest
 
 # Add src directory to path
