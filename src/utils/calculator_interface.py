@@ -10,7 +10,13 @@ from abc import ABC, abstractmethod
 
 # Type variables for generic return types
 T = TypeVar('T')
-SeriesType = Union[pd.Series, list, np.ndarray]
+# 联合类型，表示参数可以接受以下三种数据类型中的任意一种：
+# pd.Series - pandas的序列对象（一维数组）
+# list - Python原生列表
+# np.ndarray - NumPy数组
+# 这意味着函数设计得非常灵活，能够处理多种不同的数据输入格式，而不需要调用者预先转换数据类型。
+# 这是一个常见的Python类型提示写法，用于提高代码的可读性和健壮性。
+SeriesType = Union[pd.Series, list, np.ndarray, pd.DataFrame]
 
 class TechnicalCalculator(Protocol):
     """
