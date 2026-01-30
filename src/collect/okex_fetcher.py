@@ -82,12 +82,14 @@ class OKExDataFetcher:
             return []
     
     # 拉取历史数据写入mongodb
-    def fetch_historical_data(self, inst_id: str = None, max_records: int = 100000, check_duplicates: bool = True) -> bool:
+    def fetch_historical_data(self, inst_id: str = None, bar: str = "1H", max_records: int = 100000, check_duplicates: bool = True) -> bool:
         """
         Fetch historical candlestick data and write to MongoDB.
         Main responsibility is to persist API data to MongoDB.
         
         Args:
+            inst_id: Instrument ID (e.g., "ETH-USDT-SWAP")
+            bar: Time interval (e.g., "1m", "5m", "15m", "1H", "4H", "1D")
             max_records: Maximum number of records to fetch
             check_duplicates: Whether to check MongoDB for existing data
             
@@ -101,25 +103,25 @@ class OKExDataFetcher:
         
         # Check for existing data if requested
         if check_duplicates:
-            earliest_timestamp = mongo_handler.get_earliest_timestamp()
-            latest_timestamp = mongo_handler.get_latest_timestamp()
+            earliest_timestamp = mongo_handler.get_earliest_timestamp(inst_id=inst_id, bar=bar)
+            latest_timestamp = mongo_handler.get_latest_timestamp(inst_id=inst_id, bar=bar)
             
             if earliest_timestamp and latest_timestamp:
-                logger.info(f"Found existing data in MongoDB: {earliest_timestamp} to {latest_timestamp}")
+                logger.info(f"Found existing {bar} data for {inst_id} in MongoDB: {earliest_timestamp} to {latest_timestamp}")
                 logger.info("Skipping data fetch as data already exists")
                 return True  # Return True as data already exists
         
         logger.info(f"Starting historical data fetch and storage, max records: {max_records}")
         
         while records_fetched < max_records:
-            raw_data = self.fetch_candlesticks(inst_id=inst_id, bar="1H", after=current_after)
+            raw_data = self.fetch_candlesticks(inst_id=inst_id, bar=bar, after=current_after)
             
             if not raw_data:
                 logger.info("No more data available")
                 break
             
             # Convert raw data to dictionaries
-            processed_data = self._process_candlestick_data(raw_data, inst_id=inst_id)
+            processed_data = self._process_candlestick_data(raw_data, inst_id=inst_id, bar=bar)
             
             if processed_data:
                 # Save to MongoDB
@@ -149,13 +151,14 @@ class OKExDataFetcher:
         return True
     
     #处理数据格式
-    def _process_candlestick_data(self, raw_data: List[List[str]], inst_id: str = None) -> List[Dict[str, Any]]:
+    def _process_candlestick_data(self, raw_data: List[List[str]], inst_id: str = None, bar: str = "1H") -> List[Dict[str, Any]]:
         """
         Process raw candlestick data into structured dictionaries.
         
         Args:
             raw_data: Raw candlestick data from API
             inst_id: Instrument ID for the data (e.g., "ETH-USDT-SWAP")
+            bar: Time interval (e.g., "1m", "5m", "15m", "1H", "4H", "1D")
             
         Returns:
             List of processed candlestick dictionaries
@@ -176,7 +179,8 @@ class OKExDataFetcher:
                     'vol_ccy': float(candle[6]),
                     'vol_ccy_quote': float(candle[7]),
                     'confirm': int(candle[8]),
-                    'inst_id': inst_id or 'ETH-USDT-SWAP'  # Add instrument ID
+                    'inst_id': inst_id or 'ETH-USDT-SWAP',  # Add instrument ID
+                    'bar': bar  # Add time interval
                 })
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to process candlestick data: {candle}, error: {e}")
@@ -201,12 +205,16 @@ class OKExDataFetcher:
         try:
             from .mongodb_handler import mongo_handler
             
-            # Batch upsert operation for better performance
+            # Batch upsert operation using composite key (inst_id + bar + timestamp)
             bulk_operations = []
             for record in data:
                 bulk_operations.append(
                     pymongo.UpdateOne(
-                        {"timestamp": record["timestamp"]},
+                        {
+                            "inst_id": record["inst_id"],
+                            "bar": record["bar"],
+                            "timestamp": record["timestamp"]
+                        },
                         {"$set": record},
                         upsert=True
                     )

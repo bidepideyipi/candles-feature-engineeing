@@ -81,10 +81,14 @@ class MongoDBHandler:
             logger.error(f"Failed to insert candlestick data: {e}")
             return False
     
-    def get_latest_timestamp(self) -> Optional[int]:
+    def get_latest_timestamp(self, inst_id: str = None, bar: str = None) -> Optional[int]:
         """
         Get the latest timestamp from stored candlestick data.
         
+        Args:
+            inst_id: Instrument ID to filter by
+            bar: Time interval to filter by
+            
         Returns:
             Optional[int]: Latest timestamp or None if no data exists
         """
@@ -92,7 +96,15 @@ class MongoDBHandler:
             return None
         
         try:
+            # Build query filter
+            query = {}
+            if inst_id:
+                query["inst_id"] = inst_id
+            if bar:
+                query["bar"] = bar
+            
             latest_doc = self.collection.find_one(
+                query,
                 sort=[("timestamp", -1)],
                 projection={"timestamp": 1}
             )
@@ -105,10 +117,14 @@ class MongoDBHandler:
             logger.error(f"Failed to get latest timestamp: {e}")
             return None
     
-    def get_earliest_timestamp(self) -> Optional[int]:
+    def get_earliest_timestamp(self, inst_id: str = None, bar: str = None) -> Optional[int]:
         """
         Get the earliest timestamp from stored candlestick data.
         
+        Args:
+            inst_id: Instrument ID to filter by
+            bar: Time interval to filter by
+            
         Returns:
             Optional[int]: Earliest timestamp or None if no data exists
         """
@@ -116,7 +132,15 @@ class MongoDBHandler:
             return None
         
         try:
+            # Build query filter
+            query = {}
+            if inst_id:
+                query["inst_id"] = inst_id
+            if bar:
+                query["bar"] = bar
+            
             earliest_doc = self.collection.find_one(
+                query,
                 sort=[("timestamp", 1)],
                 projection={"timestamp": 1}
             )
@@ -130,13 +154,14 @@ class MongoDBHandler:
             return None
     
     #从数据库取出数据
-    def get_candlestick_data(self, limit: int = 500, inst_id: str = None) -> List[Dict[str, Any]]:
+    def get_candlestick_data(self, limit: int = 500, inst_id: str = None, bar: str = None) -> List[Dict[str, Any]]:
         """
         Retrieve candlestick data ordered by timestamp (ascending).
         
         Args:
             limit: Maximum number of records to retrieve
             inst_id: Instrument ID to filter by (e.g., "ETH-USDT-SWAP")
+            bar: Time interval to filter by
             
         Returns:
             List[Dict[str, Any]]: Candlestick data sorted by timestamp
@@ -149,6 +174,8 @@ class MongoDBHandler:
             query = {}
             if inst_id:
                 query["inst_id"] = inst_id
+            if bar:
+                query["bar"] = bar
             
             cursor = self.collection.find(query).sort("timestamp", 1).limit(limit)
             return list(cursor)
