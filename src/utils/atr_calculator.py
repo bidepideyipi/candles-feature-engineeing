@@ -5,6 +5,7 @@ class AverageTrueRangeCalculator(BaseTechnicalCalculator):
     def calculate(self, df: pd.DataFrame) -> float:
         """
         计算ATR指标
+        Average True Range (volatility) 平均真实波幅
         
         Args:
             df: DataFrame with OHLC data containing 'high', 'low', 'close' columns

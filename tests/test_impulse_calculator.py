@@ -12,7 +12,10 @@ from utils.impulse_calculator import IMPULSE_CALCULATOR
 class TestImpulseCalculator:
     def test_calculate(self):
         # Create a sample volume series
-        volume_series = pd.Series([1000, 2000, 3000, 4000, 5000])
+        volume_series = pd.Series([1000, 1000, 1000, 1000, 1000, 1000, 2000,
+                                   1000, 1000, 1000, 1000, 1000, 1000, 2000,
+                                   1000, 1000, 1000, 1000, 1000, 1000, 2000,
+                                   1000, 1000, 1000, 1000, 1000, 1000, 2000])
         
         # Calculate the impulse
         impulse = IMPULSE_CALCULATOR.calculate(volume_series)
