@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 # Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from utils.trend_continuation_calulator import TREND_CONTINUATION_CALCULATOR
 

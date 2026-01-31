@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 # Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from utils.impulse_calculator import IMPULSE_CALCULATOR
 

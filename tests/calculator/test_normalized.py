@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 # Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from utils.normalize_encoder import NORMALIZED
 #测试获取数组格式的数据

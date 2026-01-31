@@ -8,10 +8,9 @@ import requests
 import pymongo
 import pandas as pd
 
-from ..config.settings import config
-from ..utils.rate_limiter import rate_limiter
-from .mongodb_handler import mongo_handler
-from .mongodb_handler import mongo_handler
+from config.settings import config
+from utils.rate_limiter import rate_limiter
+from candlestick_handler import mongo_handler
 import pandas as pd
 
 logger = logging.getLogger(__name__)

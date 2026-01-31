@@ -7,7 +7,7 @@ from typing import Optional
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-from ..config.settings import config
+from config.settings import config
 
 logger = logging.getLogger(__name__)
 
