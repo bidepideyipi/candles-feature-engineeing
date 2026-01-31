@@ -36,6 +36,6 @@ class Normalized(BaseTechnicalCalculator):
         # Normalize prices
         normalized = (prices_series - rolling_mean) / rolling_std
         
-        return self._get_last_value(normalized)
+        return self._get_last_value(normalized), self._get_last_value(rolling_mean), self._get_last_value(rolling_std)
 
 NORMALIZED = Normalized()

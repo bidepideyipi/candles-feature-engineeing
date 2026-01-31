@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from collect.candlestick_handler import candlestick_handler
 from collect.normalization_handler import normalization_handler
+from utils.normalize_encoder import NORMALIZED
 
 class TestMongoHandler:
     
@@ -18,13 +19,18 @@ class TestMongoHandler:
         volume = pd.Series(item['volume'] for item in candles)
         assert close is not None
         assert volume is not None
-        assert candles is not None
-        assert len(candles) > 0
+        _, mean_close, std = NORMALIZED.calculate(close)
+        _, mean_volume, std_volume  = NORMALIZED.calculate(volume)
+        is_close_saved = normalization_handler.save_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'close', mean = mean_close, std = std)
+        is_volume_saved = normalization_handler.save_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'volume', mean = mean_volume, std = std_volume)
+        assert is_close_saved is True
+        assert is_volume_saved is True
         
     def test_normalization_handler(self):
-        normalized_data = normalization_handler.normalize_data(inst_id = 'ETH-USDT-SWAP', bar = '1H')
-        assert normalized_data is not None
-        assert len(normalized_data) > 0
+        normalized_close = normalization_handler.get_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'close')
+        normalized_volume = normalization_handler.get_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'volume')
+        assert normalized_close is not None
+        assert normalized_volume is not None
 
 
 if __name__ == "__main__":

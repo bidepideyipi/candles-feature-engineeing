@@ -156,6 +156,7 @@ class OKExDataFetcher:
     "_id": ObjectId,
     "inst_id": String,        // 交易对标识 (如 "ETH-USDT-SWAP")
     "bar": String,            // 时间间隔 (如 "1H", "15m", "4H")
+    "column": String,         // 列标识 (如 "close", "volume", "rsi_14_1h")
     "mean": Number,           // 训练期间的均值
     "std": Number,            // 训练期间的标准差
     "created_at": ISODate,    // 创建时间
@@ -177,7 +178,7 @@ db.features.createIndex({"timestamp": -1})
 db.features.createIndex({"label": 1})
 
 // normalizer集合索引
-db.normalizer.createIndex({"inst_id": 1, "bar": 1}, {unique: true})
+db.normalizer.createIndex({"inst_id": 1, "bar": 1, "column": 1}, {unique: true})
 db.normalizer.createIndex({"updated_at": -1})
 ```
 
@@ -190,35 +191,46 @@ db.normalizer.createIndex({"updated_at": -1})
 2. **预测阶段**：从`normalizer`集合获取对应的统计参数，使用固定参数进行标准化
 3. **参数结构**：`{"inst_id": "ETH-USDT-SWAP", "bar": "1H", "mean": 1234.56, "std": 78.90}`
 
-#### 核心算法流程
-```python
-class FeatureEngineer:
-    def __init__(self):
-        self.time_windows = {
-            'short': 12,    # 12小时
-            'medium': 48,   # 2天
-            'long': 192     # 8天
-        }
-        
-    def calculate_rsi(self, prices, window):
-        """计算RSI指标"""
-        pass
-        
-    def calculate_bollinger_bands(self, prices, window):
-        """计算布林带指标"""
-        pass
-        
-    def generate_labels(self, df):
-        """生成7级分类标签"""
-        # 计算24小时后的价格变化率
-        # 根据预设区间进行分类映射
-        pass
-        
-    def create_feature_dataset(self, df, stride=10):
-        """创建训练数据集"""
-        pass
-```
+#### 核心算法流程 (模块化组装模式)
 
+```mermaid
+graph TD
+    A[FeatureEngineer 初始化] --> B[从 candlestick_handler 获取 ETH-USDT-SWAP 数据]
+    A --> B1[从 normalization_handler 获取 ETH-USDT-SWAP 的 close、volume 的 mean 和 std]
+    B --> C[按时间维度分组数据]
+    B1 --> C
+    
+    C --> D[1小时数据处理]
+    C --> E[15分钟数据处理]
+    C --> F[4小时数据处理]
+    
+    D --> D1[调用 RSI 计算器]
+    D --> D2[调用 MACD 计算器]
+    D --> D3[调用 标准化编码器]
+    
+    E --> E1[调用 RSI 计算器]
+    E --> E2[调用 成交量脉冲计算器]
+    
+    F --> F1[调用 RSI 计算器]
+    F --> F2[调用 趋势延续计算器]
+    
+    D1 --> G[组装特征向量]
+    D2 --> G
+    D3 --> G
+    E1 --> G
+    E2 --> G
+    F1 --> G
+    F2 --> G
+    
+    G --> H[生成7级分类标签]
+    H --> I[保存到 features 集合]
+    I --> J[完成特征工程流程]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style G fill:#e8f5e8
+    style I fill:#fff3e0
+```
 #### 特征向量构成
 ```
 MVP最小可行特征集 (12-15个特征):

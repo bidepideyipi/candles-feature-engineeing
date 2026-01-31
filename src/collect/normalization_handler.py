@@ -19,13 +19,14 @@ class NormalizationDataHandler(MongoDBBaseHandler):
         super().__init__()
         self.collection_name = config.MONGODB_COLLECTIONS['normalizer']
     
-    def save_normalization_params(self, inst_id: str, bar: str, mean: float, std: float) -> bool:
+    def save_normalization_params(self, inst_id: str, bar: str, column: str, mean: float, std: float) -> bool:
         """
         Save normalization parameters to MongoDB normalizer collection.
         
         Args:
             inst_id: Instrument ID
             bar: Time interval
+            column: Column identifier (e.g., "close", "volume", "rsi_14_1h")
             mean: Training data mean
             std: Training data standard deviation
             
@@ -39,10 +40,11 @@ class NormalizationDataHandler(MongoDBBaseHandler):
             
             # Upsert operation - update if exists, insert if not
             result = collection.update_one(
-                {"inst_id": inst_id, "bar": bar},
+                {"inst_id": inst_id, "bar": bar, "column": column},
                 {
                     "$set": {
                         "mean": mean,
+                        "column": column,
                         "std": std,
                         "updated_at": datetime.utcnow()
                     },
@@ -52,20 +54,21 @@ class NormalizationDataHandler(MongoDBBaseHandler):
                 },
                 upsert=True
             )
-            logger.info(f"Saved normalization params for {inst_id} {bar}")
+            logger.info(f"Saved normalization params for {inst_id} {bar} {column}")
             return True
             
         except Exception as e:
             logger.error(f"Failed to save normalization params: {e}")
             return False
     
-    def get_normalization_params(self, inst_id: str, bar: str) -> Optional[Dict[str, float]]:
+    def get_normalization_params(self, inst_id: str, bar: str, column: str) -> Optional[Dict[str, float]]:
         """
         Retrieve normalization parameters from MongoDB.
         
         Args:
             inst_id: Instrument ID
             bar: Time interval
+            column: Column identifier
             
         Returns:
             Dict with 'mean' and 'std' keys, or None if not found
@@ -75,7 +78,7 @@ class NormalizationDataHandler(MongoDBBaseHandler):
             if collection is None:
                 return None
             
-            doc = collection.find_one({"inst_id": inst_id, "bar": bar})
+            doc = collection.find_one({"inst_id": inst_id, "bar": bar, "column": column})
             if doc:
                 return {"mean": doc["mean"], "std": doc["std"]}
             return None
