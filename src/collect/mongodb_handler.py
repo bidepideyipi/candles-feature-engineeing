@@ -8,7 +8,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-from ..config.settings import config
+from config.settings import config
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +38,28 @@ class MongoDBHandler:
             self.client.admin.command('ping')
             
             self.db = self.client[config.MONGODB_DATABASE]
-            self.collection = self.db[config.MONGODB_COLLECTION]
+            # Initialize collections
+            self.collections = {
+                'candlesticks': self.db[config.MONGODB_COLLECTIONS['candlesticks']],
+                'features': self.db[config.MONGODB_COLLECTIONS['features']],
+                'normalizer': self.db[config.MONGODB_COLLECTIONS['normalizer']]
+            }
+            # Default collection for backward compatibility
+            self.collection = self.collections['candlesticks']
             
             logger.info(f"Connected to MongoDB at {config.MONGODB_URI}")
             logger.info(f"Database: {config.MONGODB_DATABASE}")
-            logger.info(f"Collection: {config.MONGODB_COLLECTION}")
+            logger.info(f"Collections: {config.MONGODB_COLLECTIONS}")
             
             return True
             
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
             return False
+    
+    def _get_collection(self, collection_name: str = 'candlesticks'):
+        """Get collection by name"""
+        return self.collections.get(collection_name, self.collection)
     
     def insert_candlestick_data(self, data: List[Dict[str, Any]]) -> bool:
         """
@@ -60,7 +71,8 @@ class MongoDBHandler:
         Returns:
             bool: True if insertion successful, False otherwise
         """
-        if self.collection is None:
+        collection = self._get_collection('candlesticks')
+        if collection is None:
             logger.error("No MongoDB collection available")
             return False
         
@@ -70,7 +82,7 @@ class MongoDBHandler:
                 for item in data:
                     item['inserted_at'] = datetime.utcnow()
                 
-                result = self.collection.insert_many(data)
+                result = collection.insert_many(data)
                 logger.info(f"Inserted {len(result.inserted_ids)} candlestick records")
                 return True
             else:
@@ -183,6 +195,95 @@ class MongoDBHandler:
         except Exception as e:
             logger.error(f"Failed to retrieve candlestick data: {e}")
             return []
+    
+    def save_features(self, features_data: List[Dict[str, Any]]) -> bool:
+        """
+        Save calculated features to MongoDB features collection.
+        
+        Args:
+            features_data: List of feature dictionaries
+            
+        Returns:
+            bool: True if save successful, False otherwise
+        """
+        collection = self._get_collection('features')
+        if collection is None:
+            logger.error("No features collection available")
+            return False
+        
+        try:
+            if features_data:
+                result = collection.insert_many(features_data)
+                logger.info(f"Saved {len(result.inserted_ids)} feature records")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to save features: {e}")
+            return False
+    
+    def save_normalization_params(self, inst_id: str, bar: str, mean: float, std: float) -> bool:
+        """
+        Save normalization parameters to MongoDB normalizer collection.
+        
+        Args:
+            inst_id: Instrument ID
+            bar: Time interval
+            mean: Training data mean
+            std: Training data standard deviation
+            
+        Returns:
+            bool: True if save successful, False otherwise
+        """
+        collection = self._get_collection('normalizer')
+        if collection is None:
+            logger.error("No normalizer collection available")
+            return False
+        
+        try:
+            # Upsert operation - update if exists, insert if not
+            result = collection.update_one(
+                {"inst_id": inst_id, "bar": bar},
+                {
+                    "$set": {
+                        "mean": mean,
+                        "std": std,
+                        "updated_at": datetime.utcnow()
+                    },
+                    "$setOnInsert": {
+                        "created_at": datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+            logger.info(f"Saved normalization params for {inst_id} {bar}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save normalization params: {e}")
+            return False
+    
+    def get_normalization_params(self, inst_id: str, bar: str) -> Optional[Dict[str, float]]:
+        """
+        Retrieve normalization parameters from MongoDB.
+        
+        Args:
+            inst_id: Instrument ID
+            bar: Time interval
+            
+        Returns:
+            Dict with 'mean' and 'std' keys, or None if not found
+        """
+        collection = self._get_collection('normalizer')
+        if collection is None:
+            return None
+        
+        try:
+            doc = collection.find_one({"inst_id": inst_id, "bar": bar})
+            if doc:
+                return {"mean": doc["mean"], "std": doc["std"]}
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get normalization params: {e}")
+            return None
     
     def close(self):
         """Close MongoDB connection."""

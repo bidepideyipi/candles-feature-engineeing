@@ -58,28 +58,46 @@ ETH期权猎手工具是一个专业的加密货币量化分析平台，专注�
 
 #### 类结构设计
 ```python
-class OkexDataCollector:
+class OKExDataFetcher:
     def __init__(self):
-        self.api_client = OkexAPIClient()
-        self.rate_limiter = RateLimiter(max_requests=20, time_window=1)
+        """Initialize OKEx API client"""
+        self.base_url = config.OKEX_API_BASE_URL
+        self.session = requests.Session()
         
-    def collect_historical_data(self, symbol, start_time, end_time):
-        """收集历史K线数据"""
+    def fetch_candlesticks(self, inst_id: str = None, bar: str = "1H", after: Optional[str] = None):
+        """获取K线数据
+        Args:
+            inst_id: 交易对标识 (如 "ETH-USDT-SWAP")
+            bar: 时间间隔 (如 "1H", "4H", "1D")
+            after: 时间戳用于分页获取历史数据
+        """
         pass
         
-    def save_to_mongodb(self, collection_name):
+    def fetch_historical_data(self, inst_id: str = None, bar: str = "1H", max_records: int = 100000, check_duplicates: bool = True):
+        """拉取历史数据并写入MongoDB
+        Args:
+            inst_id: 交易对标识
+            bar: 时间间隔
+            max_records: 最大记录数
+            check_duplicates: 是否检查重复数据
+        """
+        pass
+        
+    def _process_candlestick_data(self, raw_data, inst_id: str = None, bar: str = "1H"):
+        """处理K线数据格式"""
+        pass
+        
+    def _save_to_mongodb(self, data):
         """保存到MongoDB"""
-        pass
-        
-    def run_collection_job(self):
-        """执行完整的数据收集任务"""
         pass
 ```
 
 #### 关键特性
-- **令牌桶算法**: 精确控制20次/秒的请求频率
-- **断点续传**: 支持中断后继续采集
-- **数据校验**: 自动检测和修复缺失数据
+- **动态交易对支持**: 支持任意inst_id参数
+- **多时间间隔**: 支持1m/5m/15m/1H/4H/1D等多种时间间隔
+- **去重检查**: 基于inst_id+bar+timestamp的复合键去重
+- **分页获取**: 支持通过after参数获取历史数据
+- **速率限制**: 集成Redis令牌桶算法控制API请求频率
 
 ### 3.2 数据存储模块 (database)
 
@@ -88,40 +106,89 @@ class OkexDataCollector:
 // K线数据集合 (candlesticks)
 {
     "_id": ObjectId,
-    "symbol": "ETH-USDT",
-    "timestamp": ISODate,
-    "open": Number,
-    "high": Number,
-    "low": Number,
-    "close": Number,
-    "volume": Number,
-    "quote_volume": Number,
-    "created_at": ISODate
+    "bar": String,              // 时间间隔 (如 "1D", "1H", "15m")
+    "inst_id": String,          // 交易对标识 (如 "ETH-USDT-SWAP")
+    "timestamp": Number,        // 时间戳 (毫秒)
+    "open": Number,             // 开盘价
+    "high": Number,             // 最高价
+    "low": Number,              // 最低价
+    "close": Number,            // 收盘价
+    "volume": Number,           // 成交量
+    "vol_ccy": Number,          // 交易额
+    "vol_ccy_quote": Number,    // 计价货币交易额
+    "confirm": Number           // 确认状态 (1=已确认)
 }
 
 // 特征数据集合 (features)
 {
     "_id": ObjectId,
-    "timestamp": ISODate,
-    "feature_vector": Array,  // 192×17的特征矩阵
-    "label": Number,          // 1-7分类标签
-    "future_return": Number,  // 实际收益率
+    "inst_id": String,         // 交易对标识 (如 "ETH-USDT-SWAP")
+    "bar": String,             // 时间间隔 (如 "1H")
+    "timestamp": Number,       // 时间戳 (毫秒)
+    "features": {
+        // 1小时基础特征
+        "close_1h_normalized": Number,    // 价格标准化
+        "volume_1h_normalized": Number,   // 成交量标准化
+        "rsi_14_1h": Number,              // 标准短期动量指标
+        "macd_line_1h": Number,           // MACD快线
+        "macd_signal_1h": Number,         // MACD信号线
+        
+        // 时间编码特征
+        "hour_cos": Number,               // 小时余弦编码
+        "hour_sin": Number,               // 小时正弦编码
+        "day_of_week": Number,            // 星期几
+        
+        // 15分钟高频特征
+        "rsi_14_15m": Number,             // 15分钟RSI
+        "volume_impulse_15m": Number,     // 15分钟成交量脉冲
+        
+        // 4小时中期特征
+        "rsi_14_4h": Number,              // 4小时RSI
+        "trend_continuation_4h": Number   // 4小时趋势延续强度
+    },
+    "label": Number,           // 1-7分类标签
+    "future_return": Number,   // 实际收益率
     "processed_at": ISODate
 }
+
+// 标准化参数集合 (normalizer)
+{
+    "_id": ObjectId,
+    "inst_id": String,        // 交易对标识 (如 "ETH-USDT-SWAP")
+    "bar": String,            // 时间间隔 (如 "1H", "15m", "4H")
+    "mean": Number,           // 训练期间的均值
+    "std": Number,            // 训练期间的标准差
+    "created_at": ISODate,    // 创建时间
+    "updated_at": ISODate     // 更新时间
+}
 ```
+
+#### 标准化参数管理
+为了确保特征在训练和预测时的一致性，需要把对应币种的mean和std独立计算并保存到MongoDB集合normalizer中。每次训练完成后，系统会自动计算并保存当前训练数据的统计参数，在预测时使用这些固定的参数进行标准化。
 
 #### 索引策略
 ```javascript
 // candlesticks集合索引
-db.candlesticks.createIndex({"symbol": 1, "timestamp": -1})
+db.candlesticks.createIndex({"symbol": 1, "timestamp": -1, "bar": 1})
 db.candlesticks.createIndex({"timestamp": 1})
 
 // features集合索引
 db.features.createIndex({"timestamp": -1})
 db.features.createIndex({"label": 1})
+
+// normalizer集合索引
+db.normalizer.createIndex({"inst_id": 1, "bar": 1}, {unique: true})
+db.normalizer.createIndex({"updated_at": -1})
 ```
 
 ### 3.3 特征工程模块 (feature_engineering)
+
+#### 标准化一致性保证
+为了确保特征在训练和预测时的一致性，系统采用以下策略：
+
+1. **训练阶段**：计算训练数据的均值和标准差，保存到MongoDB的`normalizer`集合中
+2. **预测阶段**：从`normalizer`集合获取对应的统计参数，使用固定参数进行标准化
+3. **参数结构**：`{"inst_id": "ETH-USDT-SWAP", "bar": "1H", "mean": 1234.56, "std": 78.90}`
 
 #### 核心算法流程
 ```python
@@ -154,16 +221,25 @@ class FeatureEngineer:
 
 #### 特征向量构成
 ```
-特征维度: [时间序列长度] × [技术指标数量]
-         192 × 17 = 3264维
+MVP最小可行特征集 (12-15个特征):
 
-具体组成:
-- RSI指标: 3个 (短期/中期/长期)
-- 布林带指标: 6个 (上轨/中轨/下轨/位置/价格比率 × 3时间窗)
-- MACD指标: 4个 (快线/慢线/信号线/柱状图)
-- EMA指标: 3个 (12/48/192期价格比率)
-- ATR指标: 1个 (12期波动率)
-- 总计: 17个核心技术指标
+基础层特征 (1H):
+- close_1h_normalized: 价格标准化
+- volume_1h_normalized: 成交量标准化
+- rsi_14_1h: 标准短期动量指标
+- macd_line_1h, macd_signal_1h: 趋势跟踪
+
+时间编码特征:
+- hour_cos, hour_sin: 周期性时间特征
+- day_of_week: 星期几周期性
+
+高频特征 (15m):
+- rsi_14_15m: 快速动量反应
+- volume_impulse_15m: 成交量脉冲 (20周期窗口)
+
+中期特征 (4H):
+- rsi_14_4h: 中期动量
+- trend_continuation_4h: 趋势延续强度
 ```
 
 ### 3.4 机器学习模块 (ml_trainer)

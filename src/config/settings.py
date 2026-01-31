@@ -15,7 +15,16 @@ class Config:
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
     MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'technical_analysis')
-    MONGODB_COLLECTION = os.getenv('MONGODB_COLLECTION', 'candlesticks')
+    
+    # MongoDB Collections
+    MONGODB_COLLECTIONS = {
+        'candlesticks': os.getenv('MONGODB_CANDLESTICKS_COLLECTION', 'candlesticks'),
+        'features': os.getenv('MONGODB_FEATURES_COLLECTION', 'features'),
+        'normalizer': os.getenv('MONGODB_NORMALIZER_COLLECTION', 'normalizer')
+    }
+    
+    # Backward compatibility - default collection
+    MONGODB_COLLECTION = MONGODB_COLLECTIONS['candlesticks']
     
     # Redis Configuration
     REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
