@@ -22,5 +22,8 @@ class TimestampEncoder(BaseTechnicalCalculator):
         hour_sin = np.sin(hours_rad)
         
         return hour_cos, hour_sin
+    
+    def day_of_week(self, ts: str) -> pd.Series:
+        return pd.to_datetime(ts).dayofweek
 
 TIMESTAMP_ENCODER = TimestampEncoder()
