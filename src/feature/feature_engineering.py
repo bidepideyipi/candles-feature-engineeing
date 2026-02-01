@@ -10,17 +10,17 @@ import numpy as np
 from typing import Tuple, Optional, Dict, Any
 from datetime import datetime
 
-from ..collect.candlestick_handler import candlestick_handler
-from ..collect.normalization_handler import normalization_handler
-from ..config.settings import config
+from collect.candlestick_handler import candlestick_handler
+from collect.normalization_handler import normalization_handler
+from config.settings import config
 
 # Import calculator modules
-from ..utils.rsi_calculator import RSICalculator
-from ..utils.macd_calculator import MACDCalculator
-from ..utils.normalize_encoder import Normalized
-from ..utils.impulse_calculator import ImpulseCalculator
-from ..utils.trend_continuation_calulator import TrendContinuationCalculator
-from ..utils.time_encoder import TimestampEncoder
+from utils.rsi_calculator import RSICalculator
+from utils.macd_calculator import MACDCalculator
+from utils.normalize_encoder import Normalized
+from utils.impulse_calculator import ImpulseCalculator
+from utils.trend_continuation_calulator import TrendContinuationCalculator
+from utils.time_encoder import TimestampEncoder 
 
 logger = logging.getLogger(__name__)
 

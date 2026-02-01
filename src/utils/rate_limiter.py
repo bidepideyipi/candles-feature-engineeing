@@ -9,7 +9,7 @@ from typing import Optional
 import redis
 from redis.exceptions import RedisError, ConnectionError
 
-from ..config.settings import config
+from config.settings import config
 
 logger = logging.getLogger(__name__)
 

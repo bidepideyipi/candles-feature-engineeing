@@ -10,7 +10,7 @@ import pandas as pd
 
 from config.settings import config
 from utils.rate_limiter import rate_limiter
-from candlestick_handler import mongo_handler
+from .candlestick_handler import candlestick_handler
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -101,14 +101,14 @@ class OKExDataFetcher:
         total_saved = 0
         
         # Check for existing data if requested
-        if check_duplicates:
-            earliest_timestamp = mongo_handler.get_earliest_timestamp(inst_id=inst_id, bar=bar)
-            latest_timestamp = mongo_handler.get_latest_timestamp(inst_id=inst_id, bar=bar)
+        # if check_duplicates:
+        #     earliest_timestamp = candlestick_handler.get_earliest_timestamp(inst_id=inst_id, bar=bar)
+        #     latest_timestamp = candlestick_handler.get_latest_timestamp(inst_id=inst_id, bar=bar)
             
-            if earliest_timestamp and latest_timestamp:
-                logger.info(f"Found existing {bar} data for {inst_id} in MongoDB: {earliest_timestamp} to {latest_timestamp}")
-                logger.info("Skipping data fetch as data already exists")
-                return True  # Return True as data already exists
+        #     if earliest_timestamp and latest_timestamp:
+        #         logger.info(f"Found existing {bar} data for {inst_id} in MongoDB: {earliest_timestamp} to {latest_timestamp}")
+        #         logger.info("Skipping data fetch as data already exists")
+        #         return True  # Return True as data already exists
         
         logger.info(f"Starting historical data fetch and storage, max records: {max_records}")
         
@@ -201,9 +201,7 @@ class OKExDataFetcher:
             logger.info("No data to save to MongoDB")
             return True
         
-        try:
-            from .mongodb_handler import mongo_handler
-            
+        try:            
             # Batch upsert operation using composite key (inst_id + bar + timestamp)
             bulk_operations = []
             for record in data:
@@ -220,7 +218,7 @@ class OKExDataFetcher:
                 )
             
             if bulk_operations:
-                result = mongo_handler.collection.bulk_write(bulk_operations)
+                result = candlestick_handler._get_collection().bulk_write(bulk_operations)
                 logger.info(f"Upserted {result.upserted_count} new records, "
                            f"modified {result.modified_count} existing records")
                 return True
@@ -242,7 +240,7 @@ class OKExDataFetcher:
         try:
             
             # Get all data from MongoDB for ETH-USDT-SWAP
-            db_data = mongo_handler.get_candlestick_data(limit=1000000, inst_id="ETH-USDT-SWAP")  # Large limit to get all data
+            db_data = candlestick_handler.get_candlestick_data(limit=1000000, inst_id="ETH-USDT-SWAP")  # Large limit to get all data
             
             if not db_data:
                 logger.warning("No data found in MongoDB")

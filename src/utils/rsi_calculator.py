@@ -11,14 +11,14 @@ from .calculator_interface import BaseTechnicalCalculator
 class RSICalculator(BaseTechnicalCalculator):
     """Independent RSI calculator with customizable parameters and standardized interface"""
     
-    # def __init__(self, window: int = 14):
-    #     """
-    #     Initialize RSI calculator
+    def __init__(self, window: int = 14):
+        """
+        Initialize RSI calculator
         
-    #     Args:
-    #         window: Number of periods for RSI calculation (default: 14)
-    #     """
-    #     self.window = window
+        Args:
+            window: Number of periods for RSI calculation (default: 14)
+        """
+        self.window = window
     
     def calculate(self, close_prices: Union[pd.Series, list, np.ndarray]) -> pd.Series:
         """
@@ -40,10 +40,9 @@ class RSICalculator(BaseTechnicalCalculator):
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
         
-        window = len(prices_series)
         # Calculate average gain and loss
-        avg_gain = gain.rolling(window=window, min_periods=1).mean()
-        avg_loss = loss.rolling(window=window, min_periods=1).mean()
+        avg_gain = gain.rolling(window=self.window, min_periods=1).mean()
+        avg_loss = loss.rolling(window=self.window, min_periods=1).mean()
         
         # Calculate RS and RSI
         rs = avg_gain / avg_loss

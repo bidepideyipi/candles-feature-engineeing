@@ -167,6 +167,36 @@ class CandlestickDataHandler(MongoDBBaseHandler):
         except Exception as e:
             logger.error(f"Failed to get earliest timestamp: {e}")
             return None
+    
+    def count(self, inst_id: str, bar: str) -> int:
+        """
+        Get the total count of candlestick documents matching the criteria.
+        
+        Args:
+            inst_id: Instrument ID to filter by
+            bar: Time interval to filter by
+            
+        Returns:
+            Total count of matching documents
+        """
+        try:
+            collection = self._get_collection()
+            if collection is None:
+                return 0
+            
+            # Build query filter
+            query = {}
+            if inst_id:
+                query["inst_id"] = inst_id
+            if bar:
+                query["bar"] = bar
+            
+            count = collection.count_documents(query)
+            return count
+            
+        except Exception as e:
+            logger.error(f"Failed to count candlestick documents: {e}")
+            return 0
 
 # Global instance
 candlestick_handler = CandlestickDataHandler()

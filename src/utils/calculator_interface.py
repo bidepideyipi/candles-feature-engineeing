@@ -5,7 +5,7 @@ Defines the common interface for all technical indicator calculators
 
 import pandas as pd
 import numpy as np
-from typing import Union, Protocol, TypeVar, Tuple
+from typing import Union, Protocol, TypeVar, Tuple, List, Dict, Any
 from abc import ABC, abstractmethod
 
 # Type variables for generic return types
@@ -16,7 +16,7 @@ T = TypeVar('T')
 # np.ndarray - NumPy数组
 # 这意味着函数设计得非常灵活，能够处理多种不同的数据输入格式，而不需要调用者预先转换数据类型。
 # 这是一个常见的Python类型提示写法，用于提高代码的可读性和健壮性。
-SeriesType = Union[pd.Series, list, np.ndarray, pd.DataFrame]
+SeriesType = Union[pd.Series, list, np.ndarray, pd.DataFrame, List[Dict[str, Any]]]
 
 class TechnicalCalculator(Protocol):
     """
