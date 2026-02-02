@@ -63,7 +63,7 @@ class CandlestickDataHandler(MongoDBBaseHandler):
             logger.error(f"Failed to save candlestick data: {e}")
             return False
     
-    def get_candlestick_data(self, limit: int = 500, inst_id: str = None, bar: str = None) -> List[Dict[str, Any]]:
+    def get_candlestick_data(self, limit: int = 500, inst_id: str = None, bar: str = None, before: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Retrieve candlestick data ordered by timestamp (ascending).
         
@@ -71,6 +71,7 @@ class CandlestickDataHandler(MongoDBBaseHandler):
             limit: Maximum number of records to retrieve
             inst_id: Instrument ID to filter by
             bar: Time interval to filter by
+            before: Only retrieve data with timestamp less than this value
             
         Returns:
             List of candlestick data sorted by timestamp
@@ -86,6 +87,8 @@ class CandlestickDataHandler(MongoDBBaseHandler):
                 query["inst_id"] = inst_id
             if bar:
                 query["bar"] = bar
+            if before:
+                query["timestamp"] = {"$lt": before}
             
             cursor = collection.find(query).sort("timestamp", 1).limit(limit)
             return list(cursor)

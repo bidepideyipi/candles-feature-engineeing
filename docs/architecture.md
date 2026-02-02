@@ -123,7 +123,6 @@ class OKExDataFetcher:
 {
     "_id": ObjectId,
     "inst_id": String,         // 交易对标识 (如 "ETH-USDT-SWAP")
-    "bar": String,             // 时间间隔 (如 "1H")
     "timestamp": Number,       // 时间戳 (毫秒)
     "features": {
         // 1小时基础特征
@@ -141,10 +140,14 @@ class OKExDataFetcher:
         // 15分钟高频特征
         "rsi_14_15m": Number,             // 15分钟RSI
         "volume_impulse_15m": Number,     // 15分钟成交量脉冲
+        "macd_line_15m": Number,           // MACD快线
+        "macd_signal_15m": Number,         // MACD信号线
         
         // 4小时中期特征
         "rsi_14_4h": Number,              // 4小时RSI
         "trend_continuation_4h": Number   // 4小时趋势延续强度
+        "macd_line_4h": Number,           // MACD快线
+        "macd_signal_4h": Number,         // MACD信号线
     },
     "label": Number,           // 1-7分类标签
     "future_return": Number,   // 实际收益率

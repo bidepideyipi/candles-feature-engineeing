@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 from collect.candlestick_handler import candlestick_handler
 from collect.normalization_handler import normalization_handler
 from feature.feature_1h_creator import Feature1HCreator
+from feature.feature_15m_creator import Feature15mCreator
+from feature.feature_4h_creator import Feature4HCreator
 
 class TestFeatureCreate:
     
@@ -36,9 +38,29 @@ class TestFeatureCreate:
             "macd_signal_1h": Number,         // MACD信号线
         """
         
-        close_1h_normalized, volume_1h_normalized, rsi_14_1h, macd_line_1h,macd_signal_1h = creator.calculate(candles) 
+        resultDict = creator.calculate(candles) 
         assert True
     
+    def test_15m_feature_create(self):
+        candles = candlestick_handler.get_candlestick_data(inst_id = 'ETH-USDT-SWAP', bar = '15m', limit = 48)
+        
+        close = pd.Series(item['close'] for item in candles)
+        volume = pd.Series(item['volume'] for item in candles)
+        assert close is not None
+        assert volume is not None
+        creator = Feature15mCreator();
+        resultDict = creator.calculate(candles) 
+        assert True
+    
+    def test_4h_feature_create(self):
+        candles = candlestick_handler.get_candlestick_data(inst_id = 'ETH-USDT-SWAP', bar = '4H', limit = 48)
+        
+        close = pd.Series(item['close'] for item in candles)
+        assert close is not None
+        creator = Feature4HCreator();
+        resultDict = creator.calculate(candles) 
+        assert True
+         
 if __name__ == "__main__":
     # Run tests
     pytest.main([__file__, "-v"])
