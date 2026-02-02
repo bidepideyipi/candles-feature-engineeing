@@ -4,10 +4,9 @@ Handles feature data storage and retrieval.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Any
 
-from ..config.settings import config
+from config.settings import config
 from .mongodb_base import MongoDBBaseHandler
 
 logger = logging.getLogger(__name__)

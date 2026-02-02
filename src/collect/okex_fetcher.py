@@ -81,7 +81,7 @@ class OKExDataFetcher:
             return []
     
     # 拉取历史数据写入mongodb
-    def fetch_historical_data(self, inst_id: str = None, bar: str = "1H", max_records: int = 100000, check_duplicates: bool = True) -> bool:
+    def fetch_historical_data(self, inst_id: str = None, bar: str = "1H", max_records: int = 100000, current_after: int = None) -> bool:
         """
         Fetch historical candlestick data and write to MongoDB.
         Main responsibility is to persist API data to MongoDB.
@@ -96,7 +96,6 @@ class OKExDataFetcher:
             bool: True if data fetch and storage successful, False otherwise
         """
         
-        current_after = None
         records_fetched = 0
         total_saved = 0
         
@@ -219,8 +218,10 @@ class OKExDataFetcher:
             
             if bulk_operations:
                 result = candlestick_handler._get_collection().bulk_write(bulk_operations)
-                logger.info(f"Upserted {result.upserted_count} new records, "
-                           f"modified {result.modified_count} existing records")
+                if result.upserted_count > 0 or result.modified_count > 0:
+                    logger.info(f"Upserted {result.upserted_count} new records, modified {result.modified_count} existing records")
+                else:
+                    logger.info(f"No records were upserted or modified (data already exists and is identical)")
                 return True
             
         except Exception as e:
