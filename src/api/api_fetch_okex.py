@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException
-from typing import Optional
 from collect.okex_fetcher import okex_fetcher
 from collect.candlestick_handler import candlestick_handler
+import pandas as pd
+from collect.normalization_handler import normalization_handler
+from utils.normalize_encoder import NORMALIZED
+from feature.feature_merge import FeatureMerge
 
 # Create router for OKEx fetching endpoints
 router = APIRouter(prefix="/fetch", tags=["fetch"])
@@ -42,9 +45,7 @@ def pull_quick(inst_id: str = "ETH-USDT-SWAP"):
         "success": success
     }
         
-
-
-@router.get("/pull-large")
+@router.get("/1-pull-large")
 def fetch_okex_data(
     inst_id: str = "ETH-USDT-SWAP",
     bar: str = "1H",
@@ -53,6 +54,9 @@ def fetch_okex_data(
 ):
     """
     Fetch candlestick data from OKEx API.
+    
+    系统的第一步是从OKEx拉取数据，这是第一个要请求的接口。
+    由于拉取数据是一个耗时的操作，而且是历史数据，所以还主要用于训练数据的采集。
     
     Args:
         inst_id: Instrument ID (e.g., ETH-USDT-SWAP)
@@ -88,3 +92,39 @@ def fetch_okex_data(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
+
+@router.get("/2-normalize")
+def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 5000):
+    """
+    归一化数据
+    
+    系统的第二步是对数据进行归一化，这是第二个要请求的接口。
+    归一化的目的是将数据转换为0到1之间的范围，这在很多机器学习算法中都是必要的。
+    """
+    candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = bar, limit = limit)
+        
+    close = pd.Series(item['close'] for item in candles)
+    volume = pd.Series(item['volume'] for item in candles)
+    assert close is not None
+    assert volume is not None
+    _, mean_close, std = NORMALIZED.calculate(close)
+    _, mean_volume, std_volume  = NORMALIZED.calculate(volume)
+    is_close_saved = normalization_handler.save_normalization_params(inst_id = inst_id, bar = bar, column = 'close', mean = mean_close, std = std)
+    is_volume_saved = normalization_handler.save_normalization_params(inst_id = inst_id, bar = bar, column = 'volume', mean = mean_volume, std = std_volume)
+    success = is_close_saved and is_volume_saved
+    if not success:
+        raise HTTPException(status_code=404, detail="No data found")
+    return {
+        "inst_id": inst_id,
+        "bar": bar,
+        "success": success
+    }
+    
+@router.get("/3-merge-feature")
+def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000):
+    """
+    合并特征
+    
+    系统的第三步是合并特征，这是第三个要请求的接口。
+    合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
+    """

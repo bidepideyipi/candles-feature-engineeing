@@ -1,3 +1,4 @@
+import logging
 from feature.feature_1h_creator import Feature1HCreator
 from feature.feature_15m_creator import Feature15mCreator
 from feature.feature_4h_creator import Feature4HCreator
@@ -5,9 +6,23 @@ from collect.candlestick_handler import candlestick_handler
 from collect.normalization_handler import normalization_handler
 from collect.feature_handler import feature_handler
 
+# Create logger
+log = logging.getLogger(__name__)
+
 class FeatureMerge:
     
-    def process(self, inst_id: str, before: int = None) -> bool:
+    def loop(self, inst_id: str, before: int = None, limit: int = 5000) -> bool:
+        """
+        循环合并特征
+        """
+        last_timestamp = before
+        n = 0
+        while last_timestamp is not None and n < limit:
+            last_timestamp = self.process(inst_id = inst_id, before = last_timestamp)     
+            n += 1
+        return True
+    
+    def process(self, inst_id: str, before: int = None) -> int:
         """
         合并1小时、15分钟和4小时的特征参数
         """
@@ -16,13 +31,47 @@ class FeatureMerge:
         candles4H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '4H', limit = 48, before = before)
         
         if candles1H is None or candles15m is None or candles4H is None:
-            return False
+            log.warning(f"获取数据失败, 1H: {candles1H}, 15m: {candles15m}, 4H: {candles4H}")
+            return None
+        if len(candles1H) != 48 or len(candles15m) != 48 or len(candles4H) != 48:
+            log.warning(f"数据长度不一致, 1H: {len(candles1H)}, 15m: {len(candles15m)}, 4H: {len(candles4H)}")
+            return None
+        
+        # 数据时间一致性校验
+        try:
+            # 获取各时间周期的最后一条数据
+            last_1h = candles1H[-1]
+            last_15m = candles15m[-1]
+            last_4h = candles4H[-1]
+            
+            # 校验1H和15m的时间一致性
+            if last_1h.get('record_dt') != last_15m.get('record_dt'):
+                log.warning(f"1H和15m的日期不一致, 1H: {last_1h.get('record_dt')}, 15m: {last_15m.get('record_dt')}")
+                return None
+            if last_1h.get('record_hour') != last_15m.get('record_hour'):
+                log.warning(f"1H和15m的小时不一致, 1H: {last_1h.get('record_hour')}, 15m: {last_15m.get('record_hour')}")
+                return None
+            
+            # 校验1H和4H的时间一致性
+            if last_1h.get('record_dt') != last_4h.get('record_dt'):
+                log.warning(f"1H和4H的日期不一致, 1H: {last_1h.get('record_dt')}, 4H: {last_4h.get('record_dt')}")
+                return None
+            
+            # 校验1H和4H的小时差
+            hour_diff = last_1h.get('record_hour') - last_4h.get('record_hour')
+            if hour_diff < 0 or hour_diff > 3:
+                log.warning(f"1H和4H的小时差不在有效范围内, 差值: {hour_diff}")
+                return None
+                
+        except (IndexError, KeyError) as e:
+            log.warning(f"时间字段校验失败: {e}")
+            return None
         
         is_close_saved = normalization_handler.get_normalization_params(inst_id = inst_id, bar = '1H', column = 'close')
         is_volume_saved = normalization_handler.get_normalization_params(inst_id = inst_id, bar = '1H', column = 'volume')
         
         if not is_close_saved or not is_volume_saved:
-            return False
+            return None
         
         feature1h = Feature1HCreator(close_mean = is_close_saved['mean'], 
                                     close_std = is_close_saved['std'], 
@@ -70,14 +119,17 @@ class FeatureMerge:
         if candles1H:
             features["timestamp"] = candles1H[-1].get("timestamp")
         else:
-            return False
+            return None
         
         # 保存特征数据
         try:
             success = feature_handler.save_features([features])
             if success:
                 print(f"成功保存特征数据，timestamp: {features['timestamp']}")
-            return success
+            
+            return features["timestamp"]
         except Exception as e:
             print(f"保存特征数据失败: {e}")
-            return False
+            return None
+        
+        
