@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 import requests
 import pymongo
 import pandas as pd
+from datetime import datetime
 
 from config.settings import config
 from utils.rate_limiter import rate_limiter
@@ -48,7 +49,8 @@ class OKExDataFetcher:
         
         params = {
             "instId": instrument_id,
-            "bar": bar
+            "bar": bar,
+            "limit": 300
         }
         
         if after:
@@ -167,8 +169,12 @@ class OKExDataFetcher:
             try:
                 # OKEx candlestick data format:
                 # [timestamp, open, high, low, close, volume, volCcy, volCcyQuote, confirm]
+                # Convert timestamp to datetime
+                timestamp = int(candle[0])
+                dt = datetime.fromtimestamp(timestamp / 1000)  # Convert milliseconds to seconds
+                
                 processed.append({
-                    'timestamp': int(candle[0]),  # milliseconds
+                    'timestamp': timestamp,  # milliseconds
                     'open': float(candle[1]),
                     'high': float(candle[2]),
                     'low': float(candle[3]),
@@ -178,7 +184,9 @@ class OKExDataFetcher:
                     'vol_ccy_quote': float(candle[7]),
                     'confirm': int(candle[8]),
                     'inst_id': inst_id or 'ETH-USDT-SWAP',  # Add instrument ID
-                    'bar': bar  # Add time interval
+                    'bar': bar,  # Add time interval
+                    'record_dt': dt.strftime('%Y-%m-%d'),  # yyyy-MM-dd format
+                    'record_hour': dt.hour  # Extract hour
                 })
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to process candlestick data: {candle}, error: {e}")
@@ -219,7 +227,7 @@ class OKExDataFetcher:
             if bulk_operations:
                 result = candlestick_handler._get_collection().bulk_write(bulk_operations)
                 if result.upserted_count > 0 or result.modified_count > 0:
-                    logger.info(f"Upserted {result.upserted_count} new records, modified {result.modified_count} existing records")
+                    logger.info(f" New records {result.upserted_count}, Matched {result.matched_count}, modified {result.modified_count} existing records")
                 else:
                     logger.info(f"No records were upserted or modified (data already exists and is identical)")
                 return True

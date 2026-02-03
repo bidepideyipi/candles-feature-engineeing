@@ -1,9 +1,24 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 from collect.okex_fetcher import okex_fetcher
+from collect.candlestick_handler import candlestick_handler
 
 # Create router for OKEx fetching endpoints
 router = APIRouter(prefix="/fetch", tags=["fetch"])
+
+@router.get("/history-count")
+def get_history_count(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H"):
+    """
+    获取历史数据数量
+    """
+    count = candlestick_handler.count(inst_id=inst_id, bar=bar)
+    if count is None:
+        raise HTTPException(status_code=404, detail="No data found")
+    return {
+        "inst_id": inst_id,
+        "bar": bar,
+        "count": count
+    }
 
 @router.get("/pull-quick")
 def pull_quick(inst_id: str = "ETH-USDT-SWAP"):
@@ -30,10 +45,10 @@ def pull_quick(inst_id: str = "ETH-USDT-SWAP"):
 
 
 @router.get("/pull-large")
-async def fetch_okex_data(
+def fetch_okex_data(
     inst_id: str = "ETH-USDT-SWAP",
     bar: str = "1H",
-    max_records: int = 5000,
+    max_records: int = 600,
     current_after: int = None
 ):
     """
@@ -50,8 +65,8 @@ async def fetch_okex_data(
     """
     try:
         # Validate parameters
-        if max_records <= 5000 or max_records > 100000:
-            raise HTTPException(status_code=400, detail="max_records must be between 5000 and 100000")
+        if max_records < 600 or max_records > 60000:
+            raise HTTPException(status_code=400, detail="max_records must be between 600 and 60000")
         
         if bar not in ["15m", "1H", "4H", "1D"]:
             raise HTTPException(status_code=400, detail="Invalid bar parameter")
