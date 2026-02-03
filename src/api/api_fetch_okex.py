@@ -3,6 +3,7 @@ from collect.okex_fetcher import okex_fetcher
 from collect.candlestick_handler import candlestick_handler
 import pandas as pd
 from collect.normalization_handler import normalization_handler
+from collect.feature_handler import feature_handler
 from utils.normalize_encoder import NORMALIZED
 from feature.feature_merge import FeatureMerge
 
@@ -57,6 +58,7 @@ def fetch_okex_data(
     
     系统的第一步是从OKEx拉取数据，这是第一个要请求的接口。
     由于拉取数据是一个耗时的操作，而且是历史数据，所以还主要用于训练数据的采集。
+    拉取的数据如4H是600条，那么1H就是600*4=2400条。15m就是600*4*4=9600条。
     
     Args:
         inst_id: Instrument ID (e.g., ETH-USDT-SWAP)
@@ -121,10 +123,44 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
     }
     
 @router.get("/3-merge-feature")
-def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000):
+def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000, before: int = None):
     """
     合并特征
     
     系统的第三步是合并特征，这是第三个要请求的接口。
     合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
+    feature_merge = FeatureMerge()
+    feature_merge.loop(inst_id=inst_id, limit=limit, before=before)
+    return {
+        "inst_id": inst_id,
+        "limit": limit,
+        "success": True
+    }
+
+@router.get("/4-lable")
+def merge_label(inst_id: str = "ETH-USDT-SWAP"):
+    """
+    合并标签
+    
+    系统的第四步是合并标签，这是第四个要请求的接口。
+    合并标签的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
+    """
+    features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = 5000)
+    for feature in features:
+        timestamp = feature.get("timestamp")
+        candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = "1H", limit = 24, after = timestamp)
+        
+        if not candles or len(candles) != 24:
+            return {
+                "inst_id": inst_id,
+                "success": False
+            }
+            
+        close = pd.Series(item['close'] for item in candles)
+        
+    
+    return {
+        "inst_id": inst_id,
+        "success": True
+    }

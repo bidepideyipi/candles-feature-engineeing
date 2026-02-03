@@ -54,17 +54,15 @@ class Feature1HCreator(BaseTechnicalCalculator):
         macd_signal_1h = round(macd_signal_1h, 3)  # MACD信号线保留3位小数
         
         # 直接在当前方法中实现时间编码转换
-        # 获取最后一个时间戳
-        last_timestamp = candles1h[-1]['timestamp']
-        # 转换为小时
-        hour = pd.to_datetime(last_timestamp).hour
+        # 获取最后一个记录的小时和星期几
+        last_record = candles1h[-1]
+        record_hour = last_record['record_hour']
+        day_of_week = last_record['day_of_week']
         # 转换为弧度 (24小时 = 2π 弧度)
-        hour_rad = hour * (2 * np.pi / 24)
+        hour_rad = record_hour * (2 * np.pi / 24)
         # 计算周期性特征
         hour_cos = round(np.cos(hour_rad), 4)
         hour_sin = round(np.sin(hour_rad), 4)
-        # 计算星期几
-        day_of_week = pd.to_datetime(last_timestamp).dayofweek
         
         return {
             "close_1h_normalized": close_1h_normalized,

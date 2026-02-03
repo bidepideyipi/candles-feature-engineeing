@@ -26,9 +26,9 @@ class FeatureMerge:
         """
         合并1小时、15分钟和4小时的特征参数
         """
-        candles1H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '1H', limit = 48, before = before)
-        candles15m = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '15m', limit = 48, before = before)
-        candles4H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '4H', limit = 48, before = before)
+        candles1H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '1H', limit = 48, before = before)[::-1]
+        candles15m = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '15m', limit = 48, before = before)[::-1]
+        candles4H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '4H', limit = 48, before = before)[::-1]
         
         if candles1H is None or candles15m is None or candles4H is None:
             log.warning(f"获取数据失败, 1H: {candles1H}, 15m: {candles15m}, 4H: {candles4H}")
@@ -46,21 +46,21 @@ class FeatureMerge:
             
             # 校验1H和15m的时间一致性
             if last_1h.get('record_dt') != last_15m.get('record_dt'):
-                log.warning(f"1H和15m的日期不一致, 1H: {last_1h.get('record_dt')}, 15m: {last_15m.get('record_dt')}")
+                log.warning(f"1H和15m的日期不一致, 1H: {last_1h.get('record_dt')}, 15m: {last_15m.get('record_dt')}, last_1h: {last_1h.get('timestamp')}")
                 return None
             if last_1h.get('record_hour') != last_15m.get('record_hour'):
-                log.warning(f"1H和15m的小时不一致, 1H: {last_1h.get('record_hour')}, 15m: {last_15m.get('record_hour')}")
+                log.warning(f"1H和15m的小时不一致, 1H: {last_1h.get('record_hour')}, 15m: {last_15m.get('record_hour')}, last_1h: {last_1h.get('timestamp')}")
                 return None
             
             # 校验1H和4H的时间一致性
             if last_1h.get('record_dt') != last_4h.get('record_dt'):
-                log.warning(f"1H和4H的日期不一致, 1H: {last_1h.get('record_dt')}, 4H: {last_4h.get('record_dt')}")
+                log.warning(f"1H和4H的日期不一致, 1H: {last_1h.get('record_dt')}, 4H: {last_4h.get('record_dt')}, last_1h: {last_1h.get('timestamp')}")
                 return None
             
             # 校验1H和4H的小时差
             hour_diff = last_1h.get('record_hour') - last_4h.get('record_hour')
             if hour_diff < 0 or hour_diff > 3:
-                log.warning(f"1H和4H的小时差不在有效范围内, 差值: {hour_diff}")
+                log.warning(f"1H和4H的小时差不在有效范围内, 差值: {hour_diff}, last_1h: {last_1h.get('timestamp')}")
                 return None
                 
         except (IndexError, KeyError) as e:

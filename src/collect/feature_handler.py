@@ -75,6 +75,45 @@ class FeatureDataHandler(MongoDBBaseHandler):
         except Exception as e:
             logger.error(f"Failed to retrieve features: {e}")
             return []
+    
+    def update_feature_label(self, inst_id: str, timestamp: int, label: int) -> bool:
+        """
+        Update the label of a feature record.
+        
+        Args:
+            inst_id: Instrument ID
+            timestamp: Timestamp of the feature
+            label: Classification label
+            
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        try:
+            collection = self._get_collection()
+            if collection is None:
+                return False
+            
+            query = {
+                "inst_id": inst_id,
+                "timestamp": timestamp
+            }
+            
+            update = {
+                "$set": {"label": label}
+            }
+            
+            result = collection.update_one(query, update)
+            
+            if result.modified_count > 0:
+                logger.info(f"Updated label for inst_id: {inst_id}, timestamp: {timestamp}, label: {label}")
+                return True
+            else:
+                logger.warning(f"No record found or no update needed for inst_id: {inst_id}, timestamp: {timestamp}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to update feature label: {e}")
+            return False
 
 # Global instance
 feature_handler = FeatureDataHandler()

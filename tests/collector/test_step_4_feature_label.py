@@ -5,7 +5,7 @@ import pytest
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
-from feature.feature_merge import FeatureMerge
+from feature.feature_label import FeatureLabel
 
 class TestFeatureCreate:
     """_summary_
@@ -13,8 +13,8 @@ class TestFeatureCreate:
     loop()考虑了不同时间维度数据对齐问题
     """
     def test_meger_the_top_one(self):
-        feature_merge = FeatureMerge()
-        feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=20)
+        feature_merge = FeatureLabel()
+        feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=5000)
         assert True
     
     

@@ -186,7 +186,8 @@ class OKExDataFetcher:
                     'inst_id': inst_id or 'ETH-USDT-SWAP',  # Add instrument ID
                     'bar': bar,  # Add time interval
                     'record_dt': dt.strftime('%Y-%m-%d'),  # yyyy-MM-dd format
-                    'record_hour': dt.hour  # Extract hour
+                    'record_hour': dt.hour,  # Extract hour
+                    'day_of_week': dt.weekday()  # Extract day of week (0=Monday, 6=Sunday)
                 })
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to process candlestick data: {candle}, error: {e}")
