@@ -52,4 +52,4 @@ class AverageTrueRangeCalculator(BaseTechnicalCalculator):
             atr.iloc[i] = (tr_series.iloc[i] + (14-1) * atr.iloc[i-1]) / 14
         
         return float(atr.iloc[-1])
-ATR = AverageTrueRangeCalculator()
+ATR_CALCULATOR = AverageTrueRangeCalculator()

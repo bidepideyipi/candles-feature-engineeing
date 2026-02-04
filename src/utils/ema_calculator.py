@@ -42,4 +42,4 @@ class EMACalculator(BaseTechnicalCalculator):
 # Convenience instances for common periods
 EMA_12 = EMACalculator(window=12)
 EMA_26 = EMACalculator(window=26)
-EMA_50 = EMACalculator(window=50)
+EMA_48 = EMACalculator(window=48)

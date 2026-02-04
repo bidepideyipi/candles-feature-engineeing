@@ -48,7 +48,7 @@ class Feature1HCreator(BaseTechnicalCalculator):
         close_1h_normalized = round((close1h.iloc[-1] - self.close_mean) / self.close_std, 4)  # 价格标准化保留4位小数
         volume_1h_normalized = round((volume1h.iloc[-1] - self.vol_mean) / self.vol_std, 3)  # 成交量标准化保留3位小数
         
-        rsi_14_1h = round(self.rsi_calculator.calculate(close1h), 1)  # RSI保留1位小数
+        rsi_14_1h = round(self.rsi_calculator.calculate(close1h), 0)  # RSI保留0位小数
         macd_line_1h, macd_signal_1h, _ = self.macd_calculator.calculate(close1h)
         macd_line_1h = round(macd_line_1h, 3)  # MACD保留3位小数
         macd_signal_1h = round(macd_signal_1h, 3)  # MACD信号线保留3位小数

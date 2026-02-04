@@ -11,6 +11,7 @@ from collect.normalization_handler import normalization_handler
 from feature.feature_1h_creator import Feature1HCreator
 from feature.feature_15m_creator import Feature15mCreator
 from feature.feature_4h_creator import Feature4HCreator
+from feature.feature_1d_creator import Feature1DCreator
 
 class TestFeatureCreate:
     
@@ -58,6 +59,12 @@ class TestFeatureCreate:
         close = pd.Series(item['close'] for item in candles)
         assert close is not None
         creator = Feature4HCreator();
+        resultDict = creator.calculate(candles) 
+        assert True
+        
+    def test_1d_feature_create(self):
+        candles = candlestick_handler.get_candlestick_data(inst_id = 'ETH-USDT-SWAP', bar = '1D', limit = 48)
+        creator = Feature1DCreator();
         resultDict = creator.calculate(candles) 
         assert True
          

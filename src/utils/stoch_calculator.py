@@ -24,7 +24,26 @@ class StochasticCalculator(BaseTechnicalCalculator):
     
     def calculate(self, df: pd.DataFrame) -> Tuple[float, float]:
         """
-        Calculate Stochastic Oscillator values
+        Calculate Stochastic Oscillator values 随机振荡器
+        是一个 动量指标 ，用于比较某个证券的 收盘价 与其 特定时间窗口内的价格范围 （最高价和最低价）之间的关系。
+        收盘价往往接近价格区间的高端时，表明 上涨动能 （超买）
+        收盘价往往接近价格区间的低端时，表明 下跌动能 （超卖）
+        
+        0-20 超卖区域 - 可能反弹 
+        20-80 正常区域 - 没有明确信号 
+        80-100 超买区域 - 可能回调
+        
+        Stochastic 在横盘时容易产生假信号
+
+        解决：
+        - 结合其他指标（如 RSI、MACD）
+        - 等待价格突破确认
+        - 在强势趋势中谨慎使用超买/超卖信号
+        
+        与其他指标对比
+        RSI 都是 0-100 的振荡器 RSI 只看收盘价，Stochastic 考虑高低价范围 
+        MACD 都有交叉信号 Stochastic 反应更快，但噪音更多 
+        ATR 都涉及价格波动 ATR 测量波动幅度，Stochastic 测量相对位置
         
         Args:
             df: DataFrame with OHLC data containing 'high', 'low', 'close' columns

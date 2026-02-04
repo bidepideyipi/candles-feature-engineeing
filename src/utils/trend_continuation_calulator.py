@@ -9,6 +9,12 @@ class TrendContinuationCalculator(BaseTechnicalCalculator):
     def calculate(self, close_prices: Union[pd.Series, list, np.ndarray]) -> pd.Series:
         """
         计算趋势延续强度
+        关注点: 当前趋势会继续吗？
+        正值 → 上涨趋势
+        - 值越大，上涨越强势且连续
+        负值 → 下跌趋势
+        - 值越小（越负），下跌越强势且连续
+        接近 0 → 震荡/无趋势
         
         Args:
             close_prices: 价格序列

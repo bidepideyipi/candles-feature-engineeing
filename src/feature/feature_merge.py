@@ -2,6 +2,7 @@ import logging
 from feature.feature_1h_creator import Feature1HCreator
 from feature.feature_15m_creator import Feature15mCreator
 from feature.feature_4h_creator import Feature4HCreator
+from feature.feature_1d_creator import Feature1DCreator
 from collect.candlestick_handler import candlestick_handler
 from collect.normalization_handler import normalization_handler
 from collect.feature_handler import feature_handler
@@ -79,10 +80,12 @@ class FeatureMerge:
                                     vol_std = is_volume_saved['std']);
         feature15m = Feature15mCreator();
         feature4h = Feature4HCreator();
+        feature1D = Feature1DCreator();
         
         feature1h_result = feature1h.calculate(candles1H)
         feature15m_result = feature15m.calculate(candles15m)
         feature4h_result = feature4h.calculate(candles4H)
+        feature1D_result = feature1D.calculate(candles1D)
         
         # 合并特征到一个字典中
         features = {
@@ -103,12 +106,26 @@ class FeatureMerge:
             "volume_impulse_15m": feature15m_result.get("volume_impulse_15m"),
             "macd_line_15m": feature15m_result.get("macd_line_15m"),
             "macd_signal_15m": feature15m_result.get("macd_signal_15m"),
+            "atr_15m": feature15m_result.get("atr_15m"),
+            "stoch_k_15m": feature15m_result.get("stoch_k_15m"),
+            "stoch_d_15m": feature15m_result.get("stoch_d_15m"),
             
             # 4小时中期特征
             "rsi_14_4h": feature4h_result.get("rsi_14_4h"),
             "trend_continuation_4h": feature4h_result.get("trend_continuation_4h"),
             "macd_line_4h": feature4h_result.get("macd_line_4h"),
             "macd_signal_4h": feature4h_result.get("macd_signal_4h"),
+            "atr_4h": feature4h_result.get("atr_4h"),
+            "adx_4h": feature4h_result.get("adx_4h"),
+            "plus_di_4h": feature4h_result.get("plus_di_4h"),
+            "minus_di_4h": feature4h_result.get("minus_di_4h"),
+            "ema_12_4h": feature4h_result.get("ema_12_4h"),
+            "ema_26_4h": feature4h_result.get("ema_26_4h"),
+            "ema_48_4h": feature4h_result.get("ema_48_4h"),
+            
+            # 1天长期特征
+            "atr_14_1D": feature1D_result.get("atr_14_1d"),
+            "stoch_14_1D": feature1D_result.get("stoch_14_1d"),
             
             # 基本信息
             "inst_id": inst_id,
