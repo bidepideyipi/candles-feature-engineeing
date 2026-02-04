@@ -62,7 +62,7 @@ def fetch_okex_data(
     
     Args:
         inst_id: Instrument ID (e.g., ETH-USDT-SWAP)
-        bar: Time interval (e.g., 1H, 15m, 4H)
+        bar: Time interval (e.g., "15m", "1H", "4H", "1D")
         max_records: Number of records to fetch (max 100000)
         current_after: 时间戳，毫秒级
     

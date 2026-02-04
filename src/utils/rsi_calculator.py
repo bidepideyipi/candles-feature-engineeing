@@ -52,45 +52,6 @@ class RSICalculator(BaseTechnicalCalculator):
         rsi = rsi.replace([np.inf, -np.inf], np.nan)
         
         return self._get_last_value(rsi)
-    
+   
+#Instance    
 RSI_CALCULATOR = RSICalculator()
-
-# _rsi_calculators = {}
-
-
-# def calculate_rsi(close_prices: Union[pd.Series, list, np.ndarray], 
-#                   window: int = 14) -> pd.Series:
-#     """
-#     Convenience function to calculate RSI using cached calculator instances
-    
-#     Args:
-#         close_prices: Closing prices series
-#         window: Number of periods (default: 14)
-        
-#     Returns:
-#         pandas Series with RSI values
-#     """
-#     # Use cached instance for common windows to avoid repeated instantiation
-#     if window not in _rsi_calculators:
-#         _rsi_calculators[window] = RSICalculator(window=window)
-    
-#     return _rsi_calculators[window].calculate(close_prices)
-
-
-# def get_rsi_last(close_prices: Union[pd.Series, list, np.ndarray], 
-#                  window: int = 14) -> float:
-#     """
-#     Convenience function to get last RSI value using cached calculator instances
-    
-#     Args:
-#         close_prices: Closing prices series
-#         window: Number of periods (default: 14)
-        
-#     Returns:
-#         Last RSI value as float
-#     """
-#     # Use cached instance for common windows to avoid repeated instantiation
-#     if window not in _rsi_calculators:
-#         _rsi_calculators[window] = RSICalculator(window=window)
-    
-#     return _rsi_calculators[window].get_last(close_prices)
