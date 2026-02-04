@@ -19,10 +19,10 @@ class FeatureMerge:
         last_timestamp = before
         n = 0
         while last_timestamp is not None and n < limit:
-            last_timestamp = self.process(inst_id = inst_id, before = last_timestamp)     
+            last_timestamp = self.process(inst_id = inst_id, before = last_timestamp)
             n += 1
         return True
-    
+
     def process(self, inst_id: str, before: int = None) -> int:
         """
         合并1小时、15分钟和4小时的特征参数
@@ -30,12 +30,14 @@ class FeatureMerge:
         candles1H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '1H', limit = 48, before = before)[::-1]
         candles15m = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '15m', limit = 48, before = before)[::-1]
         candles4H = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '4H', limit = 48, before = before)[::-1]
+        candles1D = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = '1D', limit = 48, before = before)[::-1]
         
-        if candles1H is None or candles15m is None or candles4H is None:
-            log.warning(f"获取数据失败, 1H: {candles1H}, 15m: {candles15m}, 4H: {candles4H}")
+        
+        if candles1H is None or candles15m is None or candles4H is None or candles1D is None:
+            log.warning(f"获取数据失败, 1H: {candles1H}, 15m: {candles15m}, 4H: {candles4H}, 1D: {candles1D}")
             return None
-        if len(candles1H) != 48 or len(candles15m) != 48 or len(candles4H) != 48:
-            log.warning(f"数据长度不一致, 1H: {len(candles1H)}, 15m: {len(candles15m)}, 4H: {len(candles4H)}")
+        if len(candles1H) != 48 or len(candles15m) != 48 or len(candles4H) != 48 or len(candles1D) != 48:
+            log.warning(f"数据长度不一致, 1H: {len(candles1H)}, 15m: {len(candles15m)}, 4H: {len(candles4H)}, 1D: {len(candles1D)}")
             return None
         
         # 数据时间一致性校验
@@ -44,6 +46,12 @@ class FeatureMerge:
             last_1h = candles1H[-1]
             last_15m = candles15m[-1]
             last_4h = candles4H[-1]
+            last_1d = candles1D[-1]
+            
+            # 校验1H和1D的日期一致性
+            if last_1h.get('record_dt') != last_1d.get('record_dt'):
+                log.warning(f"1H和1D的日期不一致, 1H: {last_1h.get('record_dt')}, 1D: {last_1d.get('record_dt')}, last_1h: {last_1h.get('timestamp')}")
+                return None
             
             # 校验1H和15m的时间一致性
             if last_1h.get('record_dt') != last_15m.get('record_dt'):
@@ -124,8 +132,8 @@ class FeatureMerge:
             "ema_48_4h": feature4h_result.get("ema_48_4h"),
             
             # 1天长期特征
-            "atr_14_1D": feature1D_result.get("atr_14_1d"),
-            "stoch_14_1D": feature1D_result.get("stoch_14_1d"),
+            "rsi_14_1d": feature1D_result.get("rsi_14_1d"),
+            "atr_1d": feature1D_result.get("atr_1d"),
             
             # 基本信息
             "inst_id": inst_id,

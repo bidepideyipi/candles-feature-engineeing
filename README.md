@@ -1,27 +1,41 @@
 # Technical Analysis Helper
 
-A Python project that uses XGBoost to predict cryptocurrency price movements based on technical indicators from OKEx exchange.
+A Python project that uses XGBoost to predict cryptocurrency price movements based on technical indicators from OKX exchange.
 
 ## Features
-- 📊 Fetches candlestick data from OKEx API
-- 📈 Calculates technical indicators (RSI, MACD, BOLL) across multiple time windows
+- 📊 Fetches candlestick data from OKX API across multiple timeframes (15m, 1H, 4H, 1D)
+- 📈 Calculates technical indicators (RSI, MACD, ATR, Stochastic, ADX, EMA) across multiple time windows
 - 💾 Stores data in MongoDB for persistence
 - 🤖 Trains XGBoost classification model for price movement prediction
 - 🔮 Outputs classification with confidence scores
-- 🎯 8-class classification system for different price movement ranges
+- 🎯 3-class classification system for price movement prediction (82%+ accuracy)
 
-## Classification System
-The model predicts price movements in the following categories:
+## Model Performance
 
-| Class | Description | Price Range |
-|-------|-------------|-------------|
-| -3 | Strong bearish | < -5.5% |
-| -2 | Light bearish | -2.5% to -5.0% |
-| -1 | Very light bearish | -0.5% to -2.5% |
-| 0 | Neutral | -0.5% to 0.5% |
-| 1 | Very light bullish | 0.5% to 2.5% |
-| 2 | Light bullish | 2.5% to 5.5% |
-| 3 | Strong bullish | > 5.5% |
+### Version 1.0
+- **Accuracy**: 82.18%
+- **Cross-validation Accuracy**: 80.15% (±2.06%)
+- **Features**: 27 technical indicators
+- **Training Samples**: 12,119
+- **Classes**: 3 (Down/Sideways/Up)
+
+### Classification System
+The model predicts price movements in following categories:
+
+| Class | Description | Price Range | Confidence |
+|-------|-------------|-------------|------------|
+| 1 | Down | < -1.2% | 63.79% |
+| 2 | Sideways | -1.2% to 1.2% | 54.31% |
+| 3 | Up | > 1.2% | 64.89% |
+
+### Top 5 Features
+| Rank | Feature | Description |
+|------|---------|-------------|
+| 1 | day_of_week | Day of week (cyclical feature) |
+| 2 | ema_48_4h | 4-hour 48-period EMA (medium-term trend) |
+| 3 | rsi_1d | Daily RSI (long-term momentum) |
+| 4 | atr_1d | Daily ATR (long-term volatility) |
+| 5 | ema_26_4h | 4-hour 26-period EMA (medium-term trend) |
 
 ## Prerequisites
 - Python 3.8+
@@ -32,7 +46,7 @@ The model predicts price movements in the following categories:
 
 ### 1. Setup Environment
 ```bash
-# Clone the repository
+# Clone repository
 git clone <repository-url>
 cd technial_analysis_helper
 
@@ -46,7 +60,7 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 ```bash
-# Copy and edit the configuration file
+# Copy and edit configuration file
 cp .env.example .env
 ```
 
@@ -55,16 +69,17 @@ Edit `.env` with your settings:
 # MongoDB Configuration
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DATABASE=technical_analysis
-MONGODB_COLLECTION=candlesticks
+MONGODB_CANDLESTICKS_COLLECTION=candlesticks
+MONGODB_FEATURES_COLLECTION=features
+MONGODB_NORMALIZER_COLLECTION=normalizer
 
 # Redis Configuration (for rate limiting)
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_DB=0
+REDIS_DB=1
 
-# OKEx API Configuration
+# OKX API Configuration
 OKEX_API_BASE_URL=https://www.okx.com
-INST_ID=ETH-USDT-SWAP
 
 # Model Configuration
 MODEL_SAVE_PATH=models/xgboost_model.json
@@ -83,186 +98,264 @@ redis-server
 
 ### 4. Test System
 ```bash
-# Test that all components work correctly
-python test_system.py
+# Test data collection and normalization
+python -m pytest tests/collector/test_step_1_pull_quick.py -v
+python -m pytest tests/collector/test_step_2_normalize.py -v
+
+# Test feature generation
+python -m pytest tests/collector/test_step_3_feature_merge.py -v
 ```
 
-### 5. Train the Model
+### 5. Data Pipeline (Step-by-Step)
+
+#### Step 1: Pull Historical Data
 ```bash
-# Train with default parameters
-python main.py train
+# Quick pull (100 records per timeframe)
+curl http://localhost:8000/fetch/pull-quick?inst_id=ETH-USDT-SWAP
 
-# Or customize training parameters
-python main.py train --max-records 100000 --stride 5 --prediction-horizon 48
+# Or large pull
+curl http://localhost:8000/fetch/1-pull-large?inst_id=ETH-USDT-SWAP&bar=1H&max_records=1000
 ```
 
-### 6. Make Predictions
+#### Step 2: Normalize Data
 ```bash
-# Make a prediction on current market data
-python main.py predict
+curl http://localhost:8000/fetch/2-normalize?inst_id=ETH-USDT-SWAP&bar=1H
 ```
 
-### 7. Start API Server (Optional)
+#### Step 3: Merge Features
 ```bash
-# Start the training data API server
-python main.py api
-
-# Or with custom settings
-python main.py api --host 0.0.0.0 --port 8000 --debug
+curl http://localhost:8000/fetch/3-merge-feature?inst_id=ETH-USDT-SWAP&limit=5000
 ```
 
-## Usage Examples
-
-### Command Line Interface
+#### Step 4: Label Data
 ```bash
-# Train model with verbose logging
-python main.py train --verbose
-
-# Make prediction
-python main.py predict
-
-# Run system tests
-python main.py test
-
-# Start API server
-python main.py api
-
-# Get help
-python main.py --help
-python main.py train --help
+curl http://localhost:8000/fetch/4-lable?inst_id=ETH-USDT-SWAP
 ```
 
-### REST API Endpoints
-
-When running the API server (`python main.py api`), the following endpoints are available:
-
-#### `GET /health`
-Health check endpoint.
+### 6. Train Model
+Use Jupyter notebook for training:
 ```bash
-curl http://localhost:5000/health
+jupyter notebook notebooks/model_training.ipynb
 ```
 
-#### `GET /api/data-stats`
-Get statistics about stored data.
-```bash
-curl http://localhost:5000/api/data-stats
-```
-
-#### `POST /api/fetch-historical-data`
-Fetch historical data from OKEx API (checks MongoDB for duplicates).
-```bash
-curl -X POST http://localhost:5000/api/fetch-historical-data \
-  -H "Content-Type: application/json" \
-  -d '{
-    "max_records": 10000,
-    "force_refresh": false
-  }'
-```
-
-#### `POST /api/generate-training-data`
-Generate training dataset (runs in background).
-```bash
-curl -X POST http://localhost:5000/api/generate-training-data \
-  -H "Content-Type: application/json" \
-  -d '{
-    "max_records": 50000,
-    "stride": 10,
-    "prediction_horizon": 24,
-    "force_refresh": false
-  }'
-```
-
-#### `GET /api/training-status`
-Check status of training data generation.
-```bash
-curl http://localhost:5000/api/training-status
-```
-
-### API Testing
-```bash
-# Test all API endpoints
-python test_api.py
-```
-
-### Programmatic Usage
+Or train programmatically:
 ```python
 from src.models.xgboost_trainer import xgb_trainer
 
-# Train and save model
-# Training is now done through notebooks or via the main.py script
-# See notebooks/03_model_training.ipynb for training workflow
+# Train model
+results = xgb_trainer.train_model(
+    inst_id='ETH-USDT-SWAP',
+    bar='1H',
+    limit=15000,
+    test_size=0.2,
+    cv_folds=5,
+    use_class_weight=True
+)
+```
+
+### 7. Make Predictions
+```python
+from src.models.xgboost_trainer import xgb_trainer
 
 # Load trained model
 xgb_trainer.load_model()
 
 # Make prediction
-# Prediction is now done through notebooks or via the main.py script
-# See notebooks/04_prediction.ipynb for prediction workflow
-if prediction:
-    print(f"Predicted class: {prediction['predicted_class']}")
-    print(f"Confidence: {prediction['confidence']:.2%}")
-    print(f"Description: {prediction['prediction_description']}")
+predictions, probabilities = xgb_trainer.predict_single(feature_dict)
+
+# Convert back to original labels (1-3)
+predicted_class = predictions[0]
+confidence = probabilities[predicted_class - 1]
+```
+
+## Usage Examples
+
+### REST API Endpoints
+
+#### Data Fetching
+```bash
+# Get history count
+curl http://localhost:8000/fetch/history-count?inst_id=ETH-USDT-SWAP&bar=1H
+
+# Quick pull
+curl http://localhost:8000/fetch/pull-quick?inst_id=ETH-USDT-SWAP
+
+# Large pull
+curl http://localhost:8000/fetch/1-pull-large?inst_id=ETH-USDT-SWAP&bar=1H&max_records=60000
+
+# Normalize data
+curl http://localhost:8000/fetch/2-normalize?inst_id=ETH-USDT-SWAP&bar=1H
+
+# Merge features
+curl http://localhost:8000/fetch/3-merge-feature?inst_id=ETH-USDT-SWAP&limit=5000
+
+# Label data
+curl http://localhost:8000/fetch/4-lable?inst_id=ETH-USDT-SWAP
+```
+
+### Programmatic Usage
+
+#### Feature Generation
+```python
+from feature.feature_merge import FeatureMerge
+
+# Merge features across all timeframes
+feature_merge = FeatureMerge()
+feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=5000)
+```
+
+#### Technical Indicators
+```python
+from utils.rsi_calculator import RSI_CALCULATOR
+from utils.macd_calculator import MACD_CALCULATOR
+from utils.atr_calculator import ATR_CALCULATOR
+from utils.stoch_calculator import STOCHASTIC_CALCULATOR
+from utils.adx_calculator import ADX_CALCULATOR
+from utils.ema_calculator import EMA_12, EMA_26
+
+# Calculate indicators
+rsi_value = RSI_CALCULATOR.calculate(close_prices)
+macd_line, macd_signal, macd_hist = MACD_CALCULATOR.calculate(close_prices)
+atr_value = ATR_CALCULATOR.calculate(df)
+stoch_k, stoch_d = STOCHASTIC_CALCULATOR.calculate(df)
+adx_value, plus_di, minus_di = ADX_CALCULATOR.calculate(df)
+ema_12_value = EMA_12.calculate(close_prices)
 ```
 
 ## Project Structure
 ```
 ├── src/
+│   ├── api/
+│   │   └── api_fetch_okex.py        # OKX API endpoints
+│   ├── collect/
+│   │   ├── candlestick_handler.py    # MongoDB candlestick operations
+│   │   ├── feature_handler.py        # MongoDB feature operations
+│   │   ├── normalization_handler.py # MongoDB normalization params operations
+│   │   └── okex_fetcher.py       # OKX API client
 │   ├── config/
-│   │   └── settings.py          # Configuration management
-│   ├── data/
-│   │   ├── mongodb_handler.py   # MongoDB operations
-│   │   ├── okex_fetcher.py      # OKEx API client
-│   │   └── training_data_generator.py  # Training data pipeline
+│   │   └── settings.py            # Configuration management
+│   ├── feature/
+│   │   ├── feature_1h_creator.py    # 1-hour feature creation
+│   │   ├── feature_15m_creator.py   # 15-minute feature creation
+│   │   ├── feature_4h_creator.py    # 4-hour feature creation
+│   │   ├── feature_1D_creator.py    # 1-day feature creation
+│   │   └── feature_merge.py         # Merge features across timeframes
 │   ├── models/
-│   │   └── xgboost_trainer.py   # XGBoost model training and prediction
+│   │   └── xgboost_trainer.py     # XGBoost model training and prediction
 │   └── utils/
-│       ├── feature_engineering.py    # Feature creation
-│       └── technical_indicators.py   # Technical indicator calculations
-├── models/                      # Saved models directory
-├── notebooks/                   # Jupyter notebooks
-├── tests/                       # Test files
-├── main.py                      # Main CLI entry point
-├── test_system.py              # System test script
-├── requirements.txt            # Python dependencies
-├── .env.example               # Configuration template
-└── README.md                  # This file
+│       ├── rsi_calculator.py       # RSI indicator
+│       ├── macd_calculator.py      # MACD indicator
+│       ├── atr_calculator.py       # ATR indicator
+│       ├── stoch_calculator.py     # Stochastic oscillator
+│       ├── adx_calculator.py      # ADX indicator
+│       ├── ema_calculator.py       # EMA indicator
+│       ├── trend_continuation_calculator.py  # Trend continuation strength
+│       ├── normalize_encoder.py      # Data normalization
+│       └── calculator_interface.py # Base interface for calculators
+├── tests/
+│   ├── calculator/                 # Unit tests for indicators
+│   │   ├── test_rsi_calculator.py
+│   │   ├── test_macd_calculator.py
+│   │   ├── test_atr_calculator.py
+│   │   ├── test_stoch_calculator.py
+│   │   ├── test_adx_calculator.py
+│   │   └── test_ema_calculator.py
+│   └── collector/                 # Integration tests
+│       ├── test_step_1_pull_quick.py
+│       ├── test_step_2_normalize.py
+│       └── test_step_3_feature_merge.py
+├── notebooks/
+│   └── model_training.ipynb        # Model training workflow
+├── docs/
+│   └── 特征结构.md               # Feature structure documentation
+├── models/                        # Saved models directory
+├── requirements.txt               # Python dependencies
+├── .env.example                  # Configuration template
+└── README.md                     # This file
 ```
 
 ## Technical Details
 
 ### Data Pipeline
-1. **Data Fetching**: Retrieves hourly candlestick data from OKEx API
-2. **Storage**: Persists data in MongoDB for historical analysis
-3. **Feature Engineering**: 
-   - Calculates RSI, MACD, BOLL indicators for short (24h), medium (72h), and long (168h) time windows
-   - Creates 300-period sliding windows for training
-   - Generates classification labels based on future price movements
-4. **Model Training**: Uses XGBoost with multi-class classification
-5. **Prediction**: Outputs class prediction with confidence probability
 
-### Model Architecture
+#### Multi-Timeframe Data Collection
+1. **15m (15-minute)**: Short-term signals (RSI, MACD, ATR, Stochastic)
+2. **1H (1-hour)**: Base layer (Price, Volume, RSI, MACD, Time encoding)
+3. **4H (4-hour)**: Medium-term confirmation (RSI, MACD, Trend Continuation, ATR, ADX, EMA)
+4. **1D (1-day)**: Long-term context (RSI, ATR)
+
+#### Feature Engineering (27 Features)
+```
+1-Hour Base Layer (5 features):
+  - close_1h_normalized, volume_1h_normalized
+  - rsi_14_1h, macd_line_1h, macd_signal_1h
+
+Time Encoding (3 features):
+  - hour_cos, hour_sin, day_of_week
+
+15-Minute High-Frequency (7 features):
+  - rsi_14_15m, volume_impulse_15m
+  - macd_line_15m, macd_signal_15m
+  - atr_15m, stoch_k_15m, stoch_d_15m
+
+4-Hour Medium-Term (10 features):
+  - rsi_14_4h, trend_continuation_4h
+  - macd_line_4h, macd_signal_4h
+  - atr_4h, adx_4h, plus_di_4h, minus_di_4h
+  - ema_12_4h, ema_26_4h, ema_48_4h
+
+1-Day Long-Term (2 features):
+  - rsi_14_1d, atr_1d
+```
+
+#### Model Architecture
 - **Algorithm**: XGBoost (Gradient Boosting)
-- **Task**: Multi-class classification (7 classes)
-- **Features**: 27 technical indicators + price features
-- **Validation**: Cross-validation with stratified sampling
+- **Task**: Multi-class classification (3 classes)
+- **Features**: 27 technical indicators across 4 timeframes
+- **Validation**: 5-fold cross-validation with stratified sampling
+- **Class Weights**: Balanced weights for handling class imbalance
 
-### Advanced Features
+### Technical Indicators
 
-#### Rate Limiting
-- Uses Redis-based token bucket algorithm
-- Respects OKEx API limits (20 requests per 2 seconds)
-- Automatic retry with exponential backoff
+| Indicator | Timeframe | Window | Purpose |
+|-----------|-----------|---------|---------|
+| RSI | All | 14 | Momentum oscillator |
+| MACD | All | (12, 26, 9) | Trend following |
+| ATR | All | 14 | Volatility measurement |
+| Stochastic | 15m | (14, 3) | Overbought/Oversold |
+| ADX | 4h | 14 | Trend strength |
+| +DI/-DI | 4h | 14 | Trend direction |
+| EMA | 4h | 12, 26, 48 | Exponential moving average |
+| Trend Continuation | 4h | 48 | Trend strength metric |
 
-#### Duplicate Detection
-- Smart MongoDB integration prevents duplicate data storage
-- Checks existing data before fetching new data
-- Option to force refresh when needed
+## Configuration
 
-#### API Management
-- RESTful API for training data generation
-- Background processing for long-running tasks
-- Real-time status monitoring
-- Thread-safe operations
+### Classification Thresholds
+Edit `src/config/settings.py` to adjust classification ranges:
+
+```python
+CLASSIFICATION_THRESHOLDS = {
+    1: (-100, -1.2),    # Down: < -1.2%
+    2: (-1.2, 1.2),     # Sideways: -1.2% to 1.2%
+    3: (1.2, 100),       # Up: > 1.2%
+}
+```
+
+### Model Parameters
+XGBoost parameters can be adjusted in `src/models/xgboost_trainer.py`:
+
+```python
+params = {
+    'objective': 'multi:softprob',
+    'num_class': 3,
+    'max_depth': 6,
+    'learning_rate': 0.1,
+    'subsample': 0.8,
+    'colsample_bytree': 0.8,
+    'random_state': 42,
+    'eval_metric': 'mlogloss'
+}
+```
 
 ## Troubleshooting
 
@@ -275,7 +368,7 @@ if prediction:
 
 2. **API Errors**
    - Check internet connectivity
-   - Verify OKEx API is accessible
+   - Verify OKX API is accessible
    - Check rate limits
 
 3. **Import Errors**
@@ -283,27 +376,30 @@ if prediction:
    - Reinstall dependencies: `pip install -r requirements.txt`
 
 4. **Insufficient Data**
-   - Increase `max_records` during training
-   - Check OKEx API response
+   - Increase `limit` during feature merge
+   - Check OKX API response
 
 ### Debugging
 ```bash
-# Enable verbose logging
-python main.py --verbose train
+# Enable logging in tests
+python -m pytest tests/collector/test_step_3_feature_merge.py -v -s
 
-# Check system components
-python test_system.py
+# Check MongoDB data
+python -c "from collect.candlestick_handler import candlestick_handler; print(candlestick_handler.count('ETH-USDT-SWAP', '1H'))"
 
-# Manual debugging
-python debug_imports.py
+# Test individual components
+python -m pytest tests/calculator/test_adx_calculator.py -v
 ```
 
-## Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `python test_system.py`
-5. Submit a pull request
+## Release Notes
+
+### Version 1.0
+- Initial release with multi-timeframe feature engineering
+- 27 technical indicators across 4 timeframes (15m, 1H, 4H, 1D)
+- 3-class classification system (82% accuracy)
+- Support for: RSI, MACD, ATR, Stochastic, ADX, EMA, Trend Continuation
+- Comprehensive test coverage for all calculators
+- RESTful API for data pipeline automation
 
 ## License
 MIT License - see LICENSE file for details.

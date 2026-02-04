@@ -1,11 +1,21 @@
 import sys
 from pathlib import Path
 import pytest
+import logging
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from feature.feature_merge import FeatureMerge
+
+# 配置日志输出到控制台
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 class TestFeatureCreate:
     """_summary_
@@ -14,7 +24,7 @@ class TestFeatureCreate:
     """
     def test_meger_the_top_one(self):
         feature_merge = FeatureMerge()
-        feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=20)
+        feature_merge.loop(inst_id='ETH-USDT-SWAP', before=1765983600000, limit=14400)
         assert True
     
     

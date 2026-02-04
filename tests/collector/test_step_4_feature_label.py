@@ -13,8 +13,8 @@ class TestFeatureCreate:
     loop()考虑了不同时间维度数据对齐问题
     """
     def test_meger_the_top_one(self):
-        feature_merge = FeatureLabel()
-        feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=5000)
+        feature_label = FeatureLabel()
+        feature_label.loop(inst_id='ETH-USDT-SWAP', limit=20000)
         assert True
     
     

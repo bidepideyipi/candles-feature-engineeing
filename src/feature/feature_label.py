@@ -14,7 +14,7 @@ class FeatureLabel:
         """
         循环合并特征标签
         """
-        features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = 5000)
+        features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = limit)
         if not features or len(features) == 0:
             log.warning(f"获取特征失败, inst_id: {inst_id}, bar: 1H")
             return False

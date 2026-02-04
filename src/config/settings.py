@@ -46,14 +46,10 @@ class Config:
     }
     
     # Price movement classification thresholds (in percentage)
-    CLASSIFICATION_THRESHOLDS = {
-        1: (-100, -4.0),    # <-4%  (扩大区间)
-        2: (-4.0, -1.5),    # -4% to -1.5%
-        3: (-1.5, -0.3),    # -1.5% to -0.3%
-        4: (-0.3, 0.3),     # -0.3% to 0.3%  (缩小中性区间)
-        5: (0.3, 1.5),       # 0.3% to 1.5%
-        6: (1.5, 4.0),       # 1.5% to 4.0%
-        7: (4.0, 100)        # >4%
+    CLASSIFICATION_THRESHOLDS = {   
+        1: (-100, -1.2),    
+        2: (-1.2, 1.2),     
+        3: (1.2, 100),       
     }
 
 # Create a global config instance

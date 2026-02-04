@@ -93,10 +93,16 @@ class XGBoostTrainer:
         logger.info(f"Training set size: {len(X_train)}")
         logger.info(f"Test set size: {len(X_test)}")
         
+        # Get unique classes and number of classes
+        unique_classes = np.unique(targets_series)
+        num_classes = len(unique_classes)
+        
+        logger.info(f"Number of classes in data: {num_classes}")
+        logger.info(f"Classes: {sorted([cls + 1 for cls in unique_classes])}")  # +1 to convert back to 1-indexed
+        
         # Calculate class weights for imbalanced data
         sample_weights = None
         if use_class_weight:
-            unique_classes = np.unique(y_train)
             class_weights = compute_class_weight('balanced', classes=unique_classes, y=y_train)
             weight_dict = dict(zip(unique_classes, class_weights))
             
@@ -117,7 +123,7 @@ class XGBoostTrainer:
         # XGBoost parameters
         params = {
             'objective': 'multi:softprob',
-            'num_class': 7,
+            'num_class': num_classes,
             'max_depth': 6,
             'learning_rate': 0.1,
             'subsample': 0.8,
@@ -264,21 +270,26 @@ class XGBoostTrainer:
         # Basic metrics
         accuracy = accuracy_score(y_true, y_pred)
         
+        # Get unique classes in the actual data
+        unique_classes = sorted(np.unique(np.concatenate([y_true, y_pred])))
+        
+        # Convert 0-indexed classes back to original labels (1-7)
+        actual_class_labels = [int(cls) + 1 for cls in unique_classes]
+        
         # Classification report
         class_report = classification_report(
             y_true, y_pred, 
-            target_names=[str(i) for i in sorted(config.CLASSIFICATION_THRESHOLDS.keys())],
+            labels=unique_classes,
+            target_names=[str(label) for label in actual_class_labels],
             output_dict=True
         )
         
         # Confusion matrix
-        conf_matrix = confusion_matrix(y_true, y_pred)
+        conf_matrix = confusion_matrix(y_true, y_pred, labels=unique_classes)
         
         # Per-class confidence (y_true现在是0索引，y_pred_proba也是0索引)
         class_confidence = {}
-        for class_label in config.CLASSIFICATION_THRESHOLDS.keys():
-            # 转换为0索引
-            class_index = class_label - 1
+        for class_index, class_label in zip(unique_classes, actual_class_labels):
             class_indices = (y_true == class_index)
             if np.sum(class_indices) > 0:
                 class_confidence[class_label] = float(np.mean(
