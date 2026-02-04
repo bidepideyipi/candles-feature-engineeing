@@ -71,6 +71,27 @@ class FeatureMerge:
             if hour_diff < 0 or hour_diff > 3:
                 log.warning(f"1H和4H的小时差不在有效范围内, 差值: {hour_diff}, last_1h: {last_1h.get('timestamp')}")
                 return None
+            
+            # 检查1H的数据是不是连续的
+            for i in range(47):
+                if candles1H[i+1].get('timestamp') != candles1H[i].get('timestamp') + 60 * 60 * 1000:
+                    log.warning(f"1H数据不连续, 索引: {i}, 时间差: {candles1H[i+1].get('timestamp') - candles1H[i].get('timestamp')}")
+                    return None
+            # 检查15m的数据是不是连续的
+            for i in range(47):
+                if candles15m[i+1].get('timestamp') != candles15m[i].get('timestamp') + 15 * 60 * 1000:
+                    log.warning(f"15m数据不连续, 索引: {i}, 时间差: {candles15m[i+1].get('timestamp') - candles15m[i].get('timestamp')}")
+                    return None
+            # 检查4H的数据是不是连续的
+            for i in range(47):
+                if candles4H[i+1].get('timestamp') != candles4H[i].get('timestamp') + 4 * 60 * 60 * 1000:
+                    log.warning(f"4H数据不连续, 索引: {i}, 时间差: {candles4H[i+1].get('timestamp') - candles4H[i].get('timestamp')}")
+                    return None
+            # 检查1D的数据是不是连续的
+            for i in range(47):
+                if candles1D[i+1].get('timestamp') != candles1D[i].get('timestamp') + 24 * 60 * 60 * 1000:
+                    log.warning(f"1D数据不连续, 索引: {i}, 时间差: {candles1D[i+1].get('timestamp') - candles1D[i].get('timestamp')}")
+                    return None
                 
         except (IndexError, KeyError) as e:
             log.warning(f"时间字段校验失败: {e}")

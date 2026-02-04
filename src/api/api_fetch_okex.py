@@ -6,6 +6,7 @@ from collect.normalization_handler import normalization_handler
 from collect.feature_handler import feature_handler
 from utils.normalize_encoder import NORMALIZED
 from feature.feature_merge import FeatureMerge
+from feature.feature_label import FeatureLabel
 
 # Create router for OKEx fetching endpoints
 router = APIRouter(prefix="/fetch", tags=["fetch"])
@@ -146,19 +147,8 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP"):
     系统的第四步是合并标签，这是第四个要请求的接口。
     合并标签的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
-    features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = 5000)
-    for feature in features:
-        timestamp = feature.get("timestamp")
-        candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = "1H", limit = 24, after = timestamp)
-        
-        if not candles or len(candles) != 24:
-            return {
-                "inst_id": inst_id,
-                "success": False
-            }
-            
-        close = pd.Series(item['close'] for item in candles)
-        
+    feature_label = FeatureLabel()
+    feature_label.loop(inst_id=inst_id, limit=200000)
     
     return {
         "inst_id": inst_id,
