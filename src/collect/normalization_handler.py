@@ -18,6 +18,12 @@ class NormalizationDataHandler(MongoDBBaseHandler):
     def __init__(self):
         super().__init__()
         self.collection_name = config.MONGODB_COLLECTIONS['normalizer']
+        self._create_indexes([
+            ('inst_id', False),
+            ('bar', False),
+            ('column', False),
+            (('inst_id', 'bar', 'column'), True)
+        ])
     
     def save_normalization_params(self, inst_id: str, bar: str, column: str, mean: float, std: float) -> bool:
         """

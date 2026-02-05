@@ -18,6 +18,12 @@ class CandlestickDataHandler(MongoDBBaseHandler):
     def __init__(self):
         super().__init__()
         self.collection_name = config.MONGODB_COLLECTIONS['candlesticks']
+        self._create_indexes([
+            ('timestamp', False),
+            ('inst_id', False),
+            ('bar', False),
+            (('inst_id', 'timestamp', 'bar'), True)
+        ])
     
     def save_candlestick_data(self, data: List[Dict[str, Any]]) -> bool:
         """

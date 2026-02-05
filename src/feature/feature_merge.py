@@ -144,6 +144,7 @@ class FeatureMerge:
             "trend_continuation_4h": feature4h_result.get("trend_continuation_4h"),
             "macd_line_4h": feature4h_result.get("macd_line_4h"),
             "macd_signal_4h": feature4h_result.get("macd_signal_4h"),
+            "macd_histogram_4h" : feature4h_result.get("macd_histogram_4h"),
             "atr_4h": feature4h_result.get("atr_4h"),
             "adx_4h": feature4h_result.get("adx_4h"),
             "plus_di_4h": feature4h_result.get("plus_di_4h"),

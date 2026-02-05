@@ -1,0 +1,116 @@
+"""
+Test that feature collection has proper indexes to prevent duplicate data.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+
+from collect.feature_handler import feature_handler
+
+class TestFeatureIndexes:
+    """Test that indexes are created correctly."""
+    
+    def test_feature_indexes_created(self):
+        """Verify that unique indexes exist on features collection."""
+        collection = feature_handler._get_collection()
+        
+        if collection is None:
+            print("ERROR: Could not get collection")
+            assert False, "Collection is None"
+        
+        indexes = collection.index_information()
+        
+        print("\n=== Feature Collection Indexes ===")
+        for index_name, index_info in indexes.items():
+            print(f"\nIndex: {index_name}")
+            print(f"  Keys: {index_info.get('key')}")
+            print(f"  Unique: {index_info.get('unique', False)}")
+        
+        # Check for required indexes
+        required_indexes = {
+            'unique_inst_id_timestamp_bar': False,
+            'idx_timestamp': False,
+            'idx_inst_id': False,
+            'idx_bar': False
+        }
+        
+        for index_name in indexes.keys():
+            for required in required_indexes:
+                if required in index_name:
+                    required_indexes[required] = True
+        
+        print("\n=== Required Indexes Status ===")
+        all_present = True
+        for index_name, present in required_indexes.items():
+            status = "✓" if present else "✗"
+            print(f"{status} {index_name}: {'Present' if present else 'MISSING'}")
+            if not present:
+                all_present = False
+        
+        assert all_present, "Some required indexes are missing"
+        print("\n✓ All required indexes are present")
+    
+    def test_duplicate_prevention(self):
+        """Test that duplicate data is prevented by unique index."""
+        from datetime import datetime
+        
+        collection = feature_handler._get_collection()
+        
+        # Create test feature data
+        test_data = {
+            "timestamp": 1234567890,
+            "inst_id": "TEST-SWAP",
+            "bar": "1H",
+            "close_1h_normalized": 0.5,
+            "volume_1h_normalized": 0.3,
+            "rsi_14_1h": 50.0,
+            "macd_line_1h": 0.1,
+            "macd_signal_1h": 0.05,
+            "hour_cos": 0.5,
+            "hour_sin": 0.866,
+            "day_of_week": 3
+        }
+        
+        # First insert should succeed
+        print("\n=== Testing Duplicate Prevention ===")
+        print("Inserting first record...")
+        try:
+            result = collection.insert_one(test_data)
+            print(f"✓ First insert successful: {result.inserted_id}")
+        except Exception as e:
+            print(f"✗ First insert failed: {e}")
+            assert False, "First insert should succeed"
+        
+        # Second insert with same keys should fail (duplicate)
+        print("\nInserting duplicate record...")
+        try:
+            result = collection.insert_one(test_data)
+            print(f"✗ Duplicate insert succeeded (should have failed): {result.inserted_id}")
+            assert False, "Duplicate insert should fail"
+        except Exception as e:
+            if 'duplicate' in str(e).lower() or 'duplicate key' in str(e).lower():
+                print(f"✓ Duplicate insert correctly prevented: {type(e).__name__}")
+            else:
+                print(f"✗ Unexpected error: {e}")
+                assert False, "Expected duplicate key error"
+        
+        # Cleanup
+        print("\nCleaning up test data...")
+        collection.delete_many({"inst_id": "TEST-SWAP"})
+        print("✓ Cleanup complete")
+
+
+if __name__ == "__main__":
+    test = TestFeatureIndexes()
+    
+    print("Testing feature collection indexes...")
+    test.test_feature_indexes_created()
+    
+    print("\n" + "="*50)
+    print("Testing duplicate prevention...")
+    test.test_duplicate_prevention()
+    
+    print("\n" + "="*50)
+    print("✓ All tests passed!")

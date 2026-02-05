@@ -51,9 +51,11 @@ class Feature4HCreator(BaseTechnicalCalculator):
         close4H = pd.Series(item['close'] for item in candles4H)
         
         rsi_14_4h = round(self.rsi_calculator.calculate(close4H), 1)  # RSI保留1位小数
-        macd_line_4h, macd_signal_4h, _ = self.macd_calculator.calculate(close4H)
+        macd_line_4h, macd_signal_4h, macd_histogram_4h = self.macd_calculator.calculate(close4H)
         macd_line_4h = round(macd_line_4h, 3)  # MACD保留3位小数
         macd_signal_4h = round(macd_signal_4h, 3)  # MACD信号线保留3位小数
+        macd_histogram_4h = round(macd_histogram_4h, 3)  # MACD直方图保留3位小数
+        
         # 建议4小时趋势延续强度的时间窗口为20~30，这里仍然保留48和MACD慢线时间一致同时看中稳健性
         trend_continuation_4h = round(self.trend_calculator.calculate(close4H), 2)  # 趋势延续强度保留2位小数
         
@@ -77,6 +79,7 @@ class Feature4HCreator(BaseTechnicalCalculator):
             "trend_continuation_4h": trend_continuation_4h,
             "macd_line_4h": macd_line_4h,
             "macd_signal_4h": macd_signal_4h,
+            "macd_histogram_4h": macd_histogram_4h,
             "atr_4h": atr_4h,
             "adx_4h": adx_4h,
             "plus_di_4h": plus_di_4h,

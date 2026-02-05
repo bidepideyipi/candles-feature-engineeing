@@ -10,11 +10,11 @@ log = logging.getLogger(__name__)
 
 class FeatureLabel:
     
-    def loop(self, inst_id: str, limit: int = 5000) -> bool:
+    def loop(self, inst_id: str, limit: int = 5000, onlyFixNone: bool = True) -> bool:
         """
         循环合并特征标签
         """
-        features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = limit)
+        features = feature_handler.get_features(inst_id = inst_id, bar = "1H", limit = limit, isNull = onlyFixNone)
         if not features or len(features) == 0:
             log.warning(f"获取特征失败, inst_id: {inst_id}, bar: 1H")
             return False

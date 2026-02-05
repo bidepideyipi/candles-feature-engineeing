@@ -120,16 +120,34 @@ class XGBoostTrainer:
         dtrain = xgb.DMatrix(X_train_scaled, label=y_train, weight=sample_weights)
         dtest = xgb.DMatrix(X_test_scaled, label=y_test)
         
-        # XGBoost parameters
+        # XGBoost parameters (旧版)
+        # params = {
+        #     'objective': 'multi:softprob',
+        #     'num_class': num_classes,
+        #     'max_depth': 6,
+        #     'learning_rate': 0.1,
+        #     'subsample': 0.8,
+        #     'colsample_bytree': 0.8,
+        #     'random_state': 42,
+        #     'eval_metric': 'mlogloss'
+        # }
+        
+        # XGBoost parameters (新版)
         params = {
             'objective': 'multi:softprob',
-            'num_class': num_classes,
-            'max_depth': 6,
-            'learning_rate': 0.1,
+            'num_class': num_classes,  # 3类
+            'max_depth': 8,           # 增加深度
+            'learning_rate': 0.05,     # 降低学习率
+            'num_boost_round': 300,     # 增加迭代次数
+            'early_stopping_rounds': 20,
             'subsample': 0.8,
             'colsample_bytree': 0.8,
             'random_state': 42,
-            'eval_metric': 'mlogloss'
+            'eval_metric': 'mlogloss',
+            'min_child_weight': 3,
+            'gamma': 0.1,
+            'reg_alpha': 0.1,
+            'reg_lambda': 1
         }
         
         # Train model
@@ -137,9 +155,9 @@ class XGBoostTrainer:
         self.model = xgb.train(
             params,
             dtrain,
-            num_boost_round=100,
+            num_boost_round=300,
             evals=[(dtrain, 'train'), (dtest, 'test')],
-            early_stopping_rounds=10,
+            early_stopping_rounds=20,          # 从 10 增加到 20
             verbose_eval=False
         )
         

@@ -400,6 +400,8 @@ python -m pytest tests/calculator/test_adx_calculator.py -v
 - Support for: RSI, MACD, ATR, Stochastic, ADX, EMA, Trend Continuation
 - Comprehensive test coverage for all calculators
 - RESTful API for data pipeline automation
+- Unique indexes on features collection to prevent duplicate data (inst_id, timestamp, bar)
+- Automatic duplicate cleanup on index creation
 
 ## License
 MIT License - see LICENSE file for details.

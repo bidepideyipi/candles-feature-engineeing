@@ -5,6 +5,7 @@ Handles feature data storage and retrieval.
 
 import logging
 from typing import List, Dict, Any
+from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from config.settings import config
 from .mongodb_base import MongoDBBaseHandler
@@ -17,6 +18,12 @@ class FeatureDataHandler(MongoDBBaseHandler):
     def __init__(self):
         super().__init__()
         self.collection_name = config.MONGODB_COLLECTIONS['features']
+        self._create_indexes([
+            ('timestamp', False),
+            ('inst_id', False),
+            ('bar', False),
+            (('inst_id', 'timestamp', 'bar'), True)
+        ])
     
     def save_features(self, features_data: List[Dict[str, Any]]) -> bool:
         """
@@ -41,11 +48,21 @@ class FeatureDataHandler(MongoDBBaseHandler):
             logger.info(f"Saved {len(result.inserted_ids)} feature records")
             return True
             
+        except DuplicateKeyError:
+            logger.warning(f"Duplicate key error: some features already exist")
+            return True
+        except BulkWriteError as e:
+            # Check if it's a duplicate key error in bulk operation
+            if 'duplicate key' in str(e.details).lower():
+                logger.warning(f"Duplicate key error in bulk insert: some features already exist")
+                return True
+            logger.error(f"Failed to save features (bulk write error): {e}")
+            return False
         except Exception as e:
             logger.error(f"Failed to save features: {e}")
             return False
     
-    def get_features(self, limit: int = 1000, inst_id: str = None, bar: str = None) -> List[Dict[str, Any]]:
+    def get_features(self, limit: int = 1000, inst_id: str = None, bar: str = None, isNull: bool = False) -> List[Dict[str, Any]]:
         """
         Retrieve feature data.
         
@@ -68,6 +85,8 @@ class FeatureDataHandler(MongoDBBaseHandler):
                 query["inst_id"] = inst_id
             if bar:
                 query["bar"] = bar
+            if isNull:
+                query["label"] = None
             
             cursor = collection.find(query).sort("timestamp", -1).limit(limit)
             return list(cursor)

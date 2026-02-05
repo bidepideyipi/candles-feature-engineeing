@@ -140,7 +140,7 @@ def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000, before: int
     }
 
 @router.get("/4-lable")
-def merge_label(inst_id: str = "ETH-USDT-SWAP"):
+def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
     """
     合并标签
     
@@ -148,7 +148,7 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP"):
     合并标签的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
     feature_label = FeatureLabel()
-    feature_label.loop(inst_id=inst_id, limit=200000)
+    feature_label.loop(inst_id=inst_id, limit=200000, onlyFixNone=onlyFixNone)
     
     return {
         "inst_id": inst_id,
