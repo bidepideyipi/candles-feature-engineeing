@@ -63,8 +63,9 @@ class TestFeatureCreate:
         assert True
         
     def test_1d_feature_create(self):
+        is_close_saved = normalization_handler.get_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'close')
         candles = candlestick_handler.get_candlestick_data(inst_id = 'ETH-USDT-SWAP', bar = '1D', limit = 48)
-        creator = Feature1DCreator();
+        creator = Feature1DCreator(close_mean = is_close_saved['mean'], close_std = is_close_saved['std'],);
         resultDict = creator.calculate(candles) 
         assert True
          

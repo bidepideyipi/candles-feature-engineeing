@@ -82,6 +82,69 @@ class OKExDataFetcher:
             logger.error(f"Unexpected error: {e}")
             return []
     
+    # 获取实时 K 线数据（用于预测）
+    def fetch_realtime_candles(self, inst_id: str = None) -> Dict[str, List[List[str]]]:
+        """
+        Fetch realtime candlestick data for prediction.
+        Uses /api/v5/market/candles endpoint to get latest data.
+        
+        Args:
+            inst_id: Instrument ID (e.g., "ETH-USDT-SWAP", "BTC-USDT-SWAP")
+            
+        Returns:
+            Dict with 4 timeframes, each containing 48 candlestick records:
+            {
+                "15m": List[List[str]],
+                "1H": List[List[str]],
+                "4H": List[List[str]],
+                "1D": List[List[str]]
+            }
+        """
+        # Use provided inst_id or default ETH-USDT-SWAP
+        instrument_id = inst_id or 'ETH-USDT-SWAP'
+        
+        endpoint = "/api/v5/market/candles"
+        url = f"{self.base_url}{endpoint}"
+        
+        # Timeframes to fetch
+        timeframes = ["1D", "4H", "1H", "15m"]
+        results = {}
+        
+        for timeframe in timeframes:
+            params = {
+                "instId": instrument_id,
+                "bar": timeframe,
+                "limit": 48
+            }
+            
+            logger.info(f"Fetching realtime candles: instId={instrument_id}, bar={timeframe}, limit=48")
+            
+            try:
+                # Apply rate limiting
+                rate_limiter.acquire_token("okex_api")
+                response = self.session.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if data.get("code") == "0":
+                    candle_data = data.get("data", [])
+                    results[timeframe] = candle_data
+                    logger.info(f"Fetched {len(candle_data)} realtime candles for {timeframe}")
+                else:
+                    error_msg = data.get("msg", "Unknown error")
+                    logger.error(f"API error for {timeframe}: {error_msg}")
+                    results[timeframe] = []
+                    
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Request failed for {timeframe}: {e}")
+                results[timeframe] = []
+            except Exception as e:
+                logger.error(f"Unexpected error for {timeframe}: {e}")
+                results[timeframe] = []
+        
+        return results
+    
     # 拉取历史数据写入mongodb
     def fetch_historical_data(self, inst_id: str = None, bar: str = "1H", max_records: int = 100000, current_after: int = None) -> bool:
         """

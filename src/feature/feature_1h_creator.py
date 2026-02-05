@@ -45,19 +45,20 @@ class Feature1HCreator(BaseTechnicalCalculator):
         close1h = pd.Series(item['close'] for item in candles1h)
         volume1h = pd.Series(item['volume'] for item in candles1h)
         
-        close_1h_normalized = round((close1h.iloc[-1] - self.close_mean) / self.close_std, 4)  # 价格标准化保留4位小数
+        close_1h_normalized = round((close1h.iloc[-1] - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
         volume_1h_normalized = round((volume1h.iloc[-1] - self.vol_mean) / self.vol_std, 3)  # 成交量标准化保留3位小数
         
         rsi_14_1h = round(self.rsi_calculator.calculate(close1h), 0)  # RSI保留0位小数
-        macd_line_1h, macd_signal_1h, _ = self.macd_calculator.calculate(close1h)
-        macd_line_1h = round(macd_line_1h, 3)  # MACD保留3位小数
-        macd_signal_1h = round(macd_signal_1h, 3)  # MACD信号线保留3位小数
+        macd_line_1h, macd_signal_1h, macd_histogram_1h = self.macd_calculator.calculate(close1h)
+        macd_line_1h = round(macd_line_1h, 0)  # MACD保留0位小数
+        macd_signal_1h = round(macd_signal_1h, 0)  # MACD信号线保留0位小数
+        macd_histogram_1h = round(macd_histogram_1h, 3)  # MACD直方图保留3位小数    
         
         # 直接在当前方法中实现时间编码转换
         # 获取最后一个记录的小时和星期几
         last_record = candles1h[-1]
         record_hour = last_record['record_hour']
-        day_of_week = last_record['day_of_week']
+        day_of_week = last_record['record_day_of_week']
         # 转换为弧度 (24小时 = 2π 弧度)
         hour_rad = record_hour * (2 * np.pi / 24)
         # 计算周期性特征
@@ -70,6 +71,7 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "rsi_14_1h": rsi_14_1h,
             "macd_line_1h": macd_line_1h,
             "macd_signal_1h": macd_signal_1h,
+            "macd_histogram_1h": macd_histogram_1h,
             "hour_cos": hour_cos,
             "hour_sin": hour_sin,
             "day_of_week": day_of_week,

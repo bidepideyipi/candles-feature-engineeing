@@ -46,14 +46,15 @@ class Feature15mCreator(BaseTechnicalCalculator):
         volume15m = pd.Series(item['volume'] for item in candles15m)
         
         rsi_14_15m = round(self.rsi_calculator.calculate(close15m), 0)  # RSI保留0位小数
-        macd_line_15m, macd_signal_15m, _ = self.macd_calculator.calculate(close15m)
-        macd_line_15m = round(macd_line_15m, 3)  # MACD保留3位小数
-        macd_signal_15m = round(macd_signal_15m, 3)  # MACD信号线保留3位小数
+        macd_line_15m, macd_signal_15m, macd_histogram_15m = self.macd_calculator.calculate(close15m)
+        macd_line_15m = round(macd_line_15m, 0)  # MACD保留0位小数
+        macd_signal_15m = round(macd_signal_15m, 0)  # MACD信号线保留0位小数
+        macd_histogram_15m = round(macd_histogram_15m, 3)  # MACD直方图保留3位小数
         volume_impulse_15m = round(self.vi_calculator.calculate(volume15m), 2)  # 成交量脉冲保留2位小数
         
         # 转换为 DataFrame 以供需要 OHLC 数据的计算器使用
         df15m = pd.DataFrame(candles15m)
-        atr_15m = round(self.atr_calculator.calculate(df15m), 2)  # ATR保留2位小数
+        atr_15m = round(self.atr_calculator.calculate(df15m), 0)  # ATR保留0位小数
         stoch_k_15m, stoch_d_15m = self.stoch_calculator.calculate(df15m)
         stoch_k_15m = round(stoch_k_15m, 0)  # Stochastic %K保留0位小数
         stoch_d_15m = round(stoch_d_15m, 0)  # Stochastic %D保留0位小数
@@ -63,6 +64,7 @@ class Feature15mCreator(BaseTechnicalCalculator):
             "volume_impulse_15m": volume_impulse_15m,
             "macd_line_15m": macd_line_15m,
             "macd_signal_15m": macd_signal_15m,
+            "macd_histogram_15m": macd_histogram_15m,
             "atr_15m": atr_15m,
             "stoch_k_15m": stoch_k_15m,
             "stoch_d_15m": stoch_d_15m,

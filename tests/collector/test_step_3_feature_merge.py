@@ -18,13 +18,13 @@ logging.basicConfig(
 )
 
 class TestFeatureCreate:
-    """_summary_
+    """_summary
     这段展示了如何使用FeatureMerge()类来合并特征
     loop()考虑了不同时间维度数据对齐问题
     """
     def test_meger_the_top_one(self):
         feature_merge = FeatureMerge()
-        feature_merge.loop(inst_id='ETH-USDT-SWAP', before=1765983600000, limit=14400)
+        feature_merge.loop(before=1765983600000, limit=14400)
         assert True
     
     

@@ -201,7 +201,7 @@ from feature.feature_merge import FeatureMerge
 
 # Merge features across all timeframes
 feature_merge = FeatureMerge()
-feature_merge.loop(inst_id='ETH-USDT-SWAP', limit=5000)
+feature_merge.loop(limit=5000)
 ```
 
 #### Technical Indicators

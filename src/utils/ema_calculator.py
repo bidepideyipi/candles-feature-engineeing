@@ -5,7 +5,7 @@ Independent EMA calculation utility with standardized interface
 
 import pandas as pd
 import numpy as np
-from typing import Union
+from typing import Union, Tuple, List
 from .calculator_interface import BaseTechnicalCalculator
 
 class EMACalculator(BaseTechnicalCalculator):
@@ -38,6 +38,34 @@ class EMACalculator(BaseTechnicalCalculator):
         ema = prices_series.ewm(span=self.window, adjust=False).mean()
         
         return self._get_last_value(ema)
+    
+class EMACrossoverSignal:
+    """
+    EMA Crossover Signal Calculator
+    Calculates crossover signals between different EMA periods
+    """
+   
+    @staticmethod
+    def calculate_from_values(fast_ema_value: float, slow_ema_value: float) -> int:
+        """
+        Calculate crossover signal from pre-calculated EMA values
+        
+        Args:
+            fast_ema_value: Fast EMA value
+            slow_ema_value: Slow EMA value
+            
+        Returns:
+            1: Fast EMA is above Slow EMA (Bullish)
+            -1: Fast EMA is below Slow EMA (Bearish)
+            0: EMAs are equal (Neutral)
+        """
+        if fast_ema_value > slow_ema_value:
+            return 1
+        elif fast_ema_value < slow_ema_value:
+            return -1
+        else:
+            return 0
+
 
 # Convenience instances for common periods
 EMA_12 = EMACalculator(window=12)

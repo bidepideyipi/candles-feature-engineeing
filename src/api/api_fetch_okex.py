@@ -2,11 +2,15 @@ from fastapi import APIRouter, HTTPException
 from collect.okex_fetcher import okex_fetcher
 from collect.candlestick_handler import candlestick_handler
 import pandas as pd
+import numpy as np
 from collect.normalization_handler import normalization_handler
 from collect.feature_handler import feature_handler
 from utils.normalize_encoder import NORMALIZED
 from feature.feature_merge import FeatureMerge
 from feature.feature_label import FeatureLabel
+from config.settings import config
+from models.xgboost_trainer import xgb_trainer
+from typing import Dict, Any
 
 # Create router for OKEx fetching endpoints
 router = APIRouter(prefix="/fetch", tags=["fetch"])
@@ -124,7 +128,7 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
     }
     
 @router.get("/3-merge-feature")
-def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000, before: int = None):
+def merge_feature(limit: int = 5000, before: int = None):
     """
     合并特征
     
@@ -132,9 +136,8 @@ def merge_feature(inst_id: str = "ETH-USDT-SWAP", limit: int = 5000, before: int
     合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
     feature_merge = FeatureMerge()
-    feature_merge.loop(inst_id=inst_id, limit=limit, before=before)
+    feature_merge.loop(limit=limit, before=before)
     return {
-        "inst_id": inst_id,
         "limit": limit,
         "success": True
     }
@@ -154,3 +157,64 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
         "inst_id": inst_id,
         "success": True
     }
+
+@router.get("/5-predict")
+def predict_price_movement() -> Dict[str, Any]:
+    """
+    预测价格走势
+    
+    系统的第五步是使用训练好的模型进行预测，这是第五个要请求的接口。
+    使用实时 K 线数据计算特征，然后使用模型进行预测。
+    
+    Returns:
+        {
+            "timestamp": int,
+            "prediction": int,
+            "prediction_label": str,
+            "probabilities": {1: float, 2: float, 3: float},
+            "features": Dict[str, float]
+        }
+    """
+    try:
+        # 加载模型
+        if not xgb_trainer.load_model():
+            raise HTTPException(status_code=404, detail="Failed to load model. Please train the model first.")
+        
+        # 获取实时特征
+        feature_merge = FeatureMerge()
+        features = feature_merge.quick_process_eth()
+        
+        if features is None:
+            raise HTTPException(status_code=404, detail="Failed to extract features from realtime data")
+        
+        # 预测
+        prediction, probabilities = xgb_trainer.predict_single(features)
+        
+        # 构建结果
+        class_labels = {
+            1: "下跌 (<-1.2%)",
+            2: "横盘 (-1.2% ~ 1.2%)",
+            3: "上涨 (>1.2%)"
+        }
+        
+        prediction_label = class_labels.get(prediction, f"类别 {prediction}")
+        
+        # 构建概率字典
+        prob_dict = {}
+        for i, prob in enumerate(probabilities):
+            class_num = i + 1
+            prob_dict[class_num] = round(float(prob), 4)
+        
+        return {
+            "timestamp": features.get("timestamp"),
+            "prediction": int(prediction),
+            "prediction_label": prediction_label,
+            "probabilities": prob_dict,
+            "features_count": len(xgb_trainer.feature_columns),
+            "inst_id": "ETH-USDT-SWAP"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
