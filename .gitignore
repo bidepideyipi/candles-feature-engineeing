@@ -207,7 +207,7 @@ Thumbs.db
 # Jupyter notebook outputs
 .ipynb_checkpoints/
 *.ipynb_checkpoints
-notebooks/models/
+notebooks/models/*
 
 # Cache directories
 __pycache__/
