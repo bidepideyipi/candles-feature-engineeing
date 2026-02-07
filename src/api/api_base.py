@@ -29,7 +29,7 @@ def read_root():
         "version": "1.0.0",
         "endpoints": [
             "/health",
-            "/api/features",
+            "/5-predict",
             "/api/prediction",
             "/fetch/okex"
         ]
@@ -39,31 +39,3 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
-# Sample features endpoint
-@app.get("/api/features")
-def get_features():
-    """Get sample features data"""
-    return {
-        "features": {
-            "close_1h_normalized": 0.123,
-            "volume_1h_normalized": 0.456,
-            "rsi_14_1h": 55.5,
-            "macd_line_1h": 0.001,
-            "macd_signal_1h": 0.0005
-        },
-        "timestamp": 1769130000000
-    }
-
-# Sample prediction endpoint
-@app.get("/api/prediction")
-def get_prediction():
-    """Get sample prediction"""
-    return {
-        "prediction": {
-            "predicted_class": 1,
-            "confidence": 0.75,
-            "prediction_description": "Very light bullish movement (0.5% to 1.0%)"
-        },
-        "timestamp": 1769130000000
-    }

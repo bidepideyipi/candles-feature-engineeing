@@ -54,6 +54,9 @@ class Config:
         4: (1.0, 3.0),       # 上涨
         5: (3.0, 100),       # 暴涨    
     }
+    
+    # Environment Mode
+    PRODUCTION_MODE = os.getenv('PRODUCTION_MODE', 'false').lower() == 'true'
 
 # Create a global config instance
 config = Config()

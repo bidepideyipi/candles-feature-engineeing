@@ -21,6 +21,9 @@ def get_history_count(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H"):
     """
     获取历史数据数量
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     count = candlestick_handler.count(inst_id=inst_id, bar=bar)
     if count is None:
         raise HTTPException(status_code=404, detail="No data found")
@@ -35,6 +38,9 @@ def pull_quick(inst_id: str = "ETH-USDT-SWAP"):
     """
     快速拉取最新数据
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     success = okex_fetcher.fetch_historical_data(inst_id=inst_id, bar="4H", max_records=100)
     if not success:
         raise HTTPException(status_code=404, detail="No data found")
@@ -75,6 +81,9 @@ def fetch_okex_data(
     Returns:
         Candlestick data from OKEx
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     try:
         # Validate parameters
         if max_records < 600 or max_records > 60000:
@@ -109,6 +118,9 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
     系统的第二步是对数据进行归一化，这是第二个要请求的接口。
     归一化的目的是将数据转换为0到1之间的范围，这在很多机器学习算法中都是必要的。
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = bar, limit = limit)
         
     close = pd.Series(item['close'] for item in candles)
@@ -136,6 +148,9 @@ def merge_feature(limit: int = 5000, before: int = None):
     系统的第三步是合并特征，这是第三个要请求的接口。
     合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     feature_merge = FeatureMerge()
     feature_merge.loop(limit=limit, before=before)
     return {
@@ -151,6 +166,9 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
     系统的第四步是合并标签，这是第四个要请求的接口。
     合并标签的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
     """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
+    
     feature_label = FeatureLabel()
     feature_label.loop(inst_id=inst_id, limit=200000, onlyFixNone=onlyFixNone)
     
@@ -191,7 +209,8 @@ def predict_price_movement() -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Failed to load 3-class model. Please train the model first.")
         
         # 加载 5 类模型
-        xgb_trainer_5 = XGBoostTrainer(model_save_path=config.MODEL_SAVE_PATH_5)
+        xgb_trainer_5 = XGBoostTrainer()
+        xgb_trainer_5.model_save_path = config.MODEL_SAVE_PATH_5
         if not xgb_trainer_5.load_model():
             raise HTTPException(status_code=404, detail="Failed to load 5-class model. Please train the model first.")
         
