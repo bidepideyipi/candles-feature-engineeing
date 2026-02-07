@@ -10,6 +10,7 @@ from feature.feature_merge import FeatureMerge
 from feature.feature_label import FeatureLabel
 from config.settings import config
 from models.xgboost_trainer import xgb_trainer
+from models.xgboost_trainer import XGBoostTrainer
 from typing import Dict, Any
 
 # Create router for OKEx fetching endpoints
@@ -166,19 +167,33 @@ def predict_price_movement() -> Dict[str, Any]:
     系统的第五步是使用训练好的模型进行预测，这是第五个要请求的接口。
     使用实时 K 线数据计算特征，然后使用模型进行预测。
     
+    同时返回 3 类和 5 类模型的预测结果。
+    
     Returns:
         {
             "timestamp": int,
-            "prediction": int,
-            "prediction_label": str,
-            "probabilities": {1: float, 2: float, 3: float},
-            "features": Dict[str, float]
+            "prediction_3class": {
+                "prediction": int,
+                "prediction_label": str,
+                "probabilities": {1: float, 2: float, 3: float}
+            },
+            "prediction_5class": {
+                "prediction": int,
+                "prediction_label": str,
+                "probabilities": {1: float, 2: float, 3: float, 4: float, 5: float}
+            },
+            "inst_id": str
         }
     """
     try:
-        # 加载模型
+        # 加载 3 类模型
         if not xgb_trainer.load_model():
-            raise HTTPException(status_code=404, detail="Failed to load model. Please train the model first.")
+            raise HTTPException(status_code=404, detail="Failed to load 3-class model. Please train the model first.")
+        
+        # 加载 5 类模型
+        xgb_trainer_5 = XGBoostTrainer(model_save_path=config.MODEL_SAVE_PATH_5)
+        if not xgb_trainer_5.load_model():
+            raise HTTPException(status_code=404, detail="Failed to load 5-class model. Please train the model first.")
         
         # 获取实时特征
         feature_merge = FeatureMerge()
@@ -187,29 +202,52 @@ def predict_price_movement() -> Dict[str, Any]:
         if features is None:
             raise HTTPException(status_code=404, detail="Failed to extract features from realtime data")
         
-        # 预测
-        prediction, probabilities = xgb_trainer.predict_single(features)
+        # 使用 3 类模型预测
+        prediction_3, probabilities_3 = xgb_trainer.predict_single(features)
         
-        # 构建结果
-        class_labels = {
+        # 使用 5 类模型预测
+        prediction_5, probabilities_5 = xgb_trainer_5.predict_single(features)
+        
+        # 3 类标签
+        class_labels_3 = {
             1: "下跌 (<-1.2%)",
             2: "横盘 (-1.2% ~ 1.2%)",
             3: "上涨 (>1.2%)"
         }
         
-        prediction_label = class_labels.get(prediction, f"类别 {prediction}")
+        # 5 类标签
+        class_labels_5 = {
+            1: "暴跌 (<-3%)",
+            2: "下跌 (-3% ~ -1%)",
+            3: "横盘 (-1% ~ 1%)",
+            4: "上涨 (1% ~ 3%)",
+            5: "暴涨 (3% ~ 100%)"
+        }
         
-        # 构建概率字典
-        prob_dict = {}
-        for i, prob in enumerate(probabilities):
+        # 构建 3 类概率字典
+        prob_dict_3 = {}
+        for i, prob in enumerate(probabilities_3):
             class_num = i + 1
-            prob_dict[class_num] = round(float(prob), 4)
+            prob_dict_3[class_num] = round(float(prob), 4)
+        
+        # 构建 5 类概率字典
+        prob_dict_5 = {}
+        for i, prob in enumerate(probabilities_5):
+            class_num = i + 1
+            prob_dict_5[class_num] = round(float(prob), 4)
         
         return {
             "timestamp": features.get("timestamp"),
-            "prediction": int(prediction),
-            "prediction_label": prediction_label,
-            "probabilities": prob_dict,
+            "prediction_3class": {
+                "prediction": int(prediction_3),
+                "prediction_label": class_labels_3.get(prediction_3, f"类别 {prediction_3}"),
+                "probabilities": prob_dict_3
+            },
+            "prediction_5class": {
+                "prediction": int(prediction_5),
+                "prediction_label": class_labels_5.get(prediction_5, f"类别 {prediction_5}"),
+                "probabilities": prob_dict_5
+            },
             "features_count": len(xgb_trainer.feature_columns),
             "inst_id": "ETH-USDT-SWAP"
         }

@@ -28,12 +28,12 @@ class XGBoostTrainer:
     # 非特征字段列表（需要从训练数据中排除）
     EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label'}
     
-    def __init__(self):
+    def __init__(self, model_save_path: str = config.MODEL_SAVE_PATH):
         """Initialize the trainer."""
         self.model = None
         self.scaler = StandardScaler()
         self.feature_columns = None
-        self.model_save_path = config.MODEL_SAVE_PATH
+        self.model_save_path = model_save_path
         
         # Create models directory if it doesn't exist
         os.makedirs(os.path.dirname(self.model_save_path), exist_ok=True)
