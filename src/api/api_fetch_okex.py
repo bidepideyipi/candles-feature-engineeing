@@ -10,13 +10,12 @@ from feature.feature_merge import FeatureMerge
 from feature.feature_label import FeatureLabel
 from config.settings import config
 from models.xgboost_trainer import xgb_trainer
-from models.xgboost_trainer import XGBoostTrainer
 from typing import Dict, Any
 
 # Create router for OKEx fetching endpoints
 router = APIRouter(prefix="/fetch", tags=["fetch"])
 
-@router.get("/history-count")
+@router.get("/0-history-count")
 def get_history_count(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H"):
     """
     获取历史数据数量
@@ -32,33 +31,8 @@ def get_history_count(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H"):
         "bar": bar,
         "count": count
     }
-
-@router.get("/pull-quick")
-def pull_quick(inst_id: str = "ETH-USDT-SWAP"):
-    """
-    快速拉取最新数据
-    """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
-    
-    success = okex_fetcher.fetch_historical_data(inst_id=inst_id, bar="4H", max_records=100)
-    if not success:
-        raise HTTPException(status_code=404, detail="No data found")
-    success = okex_fetcher.fetch_historical_data(inst_id=inst_id, bar="1H", max_records=100)
-    if not success:
-        raise HTTPException(status_code=404, detail="No data found")
-    success = okex_fetcher.fetch_historical_data(inst_id=inst_id, bar="15m", max_records=100)
-    if not success:
-        raise HTTPException(status_code=404, detail="No data found")
-    
-    return {
-        "inst_id": inst_id,
-        "bar": "4H,1H,15m",
-        "max_records": 100,
-        "success": success
-    }
         
-@router.get("/1-pull-large")
+@router.get("/1-pull-history")
 def fetch_okex_data(
     inst_id: str = "ETH-USDT-SWAP",
     bar: str = "1H",
@@ -66,7 +40,7 @@ def fetch_okex_data(
     current_after: int = None
 ):
     """
-    Fetch candlestick data from OKEx API.
+    Fetch history candlestick data from OKEx API.
     
     系统的第一步是从OKEx拉取数据，这是第一个要请求的接口。
     由于拉取数据是一个耗时的操作，而且是历史数据，所以还主要用于训练数据的采集。
@@ -165,6 +139,7 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
     
     系统的第四步是合并标签，这是第四个要请求的接口。
     合并标签的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
+    onlyFixNone = True 表示只修复 None 值，而不添加新的标签；False 者会把所有标签重新更新，用于分类计算方式被调整的情况
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
@@ -174,6 +149,7 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
     
     return {
         "inst_id": inst_id,
+        "onlyFixNone": onlyFixNone,
         "success": True
     }
 
@@ -185,88 +161,47 @@ def predict_price_movement() -> Dict[str, Any]:
     系统的第五步是使用训练好的模型进行预测，这是第五个要请求的接口。
     使用实时 K 线数据计算特征，然后使用模型进行预测。
     
-    同时返回 3 类和 5 类模型的预测结果。
+    返回 5 类模型的预测结果。
     
     Returns:
         {
             "timestamp": int,
-            "prediction_3class": {
-                "prediction": int,
-                "prediction_label": str,
-                "probabilities": {1: float, 2: float, 3: float}
-            },
-            "prediction_5class": {
-                "prediction": int,
-                "prediction_label": str,
-                "probabilities": {1: float, 2: float, 3: float, 4: float, 5: float}
-            },
+            "prediction": int,
+            "prediction_label": str,
+            "probabilities": {1: float, 2: float, 3: float, 4: float, 5: float},
             "inst_id": str
         }
     """
     try:
-        # 加载 3 类模型
         if not xgb_trainer.load_model():
-            raise HTTPException(status_code=404, detail="Failed to load 3-class model. Please train the model first.")
+            raise HTTPException(status_code=404, detail="Failed to load model. Please train the model first.")
         
-        # 加载 5 类模型
-        xgb_trainer_5 = XGBoostTrainer()
-        xgb_trainer_5.model_save_path = config.MODEL_SAVE_PATH_5
-        if not xgb_trainer_5.load_model():
-            raise HTTPException(status_code=404, detail="Failed to load 5-class model. Please train the model first.")
-        
-        # 获取实时特征
         feature_merge = FeatureMerge()
         features = feature_merge.quick_process_eth()
         
         if features is None:
             raise HTTPException(status_code=404, detail="Failed to extract features from realtime data")
         
-        # 使用 3 类模型预测
-        prediction_3, probabilities_3 = xgb_trainer.predict_single(features)
+        prediction, probabilities = xgb_trainer.predict_single(features)
         
-        # 使用 5 类模型预测
-        prediction_5, probabilities_5 = xgb_trainer_5.predict_single(features)
-        
-        # 3 类标签
-        class_labels_3 = {
-            1: "下跌 (<-1.2%)",
-            2: "横盘 (-1.2% ~ 1.2%)",
-            3: "上涨 (>1.2%)"
+        class_labels = {
+            1: "暴跌 (<-3.6%)",
+            2: "下跌 (-3.6% ~ -1.2%)",
+            3: "横盘 (-1.2% ~ 1.2%)",
+            4: "上涨 (1.2% ~ 3.6%)",
+            5: "暴涨 (>3.6%)"
         }
         
-        # 5 类标签
-        class_labels_5 = {
-            1: "暴跌 (<-3%)",
-            2: "下跌 (-3% ~ -1%)",
-            3: "横盘 (-1% ~ 1%)",
-            4: "上涨 (1% ~ 3%)",
-            5: "暴涨 (3% ~ 100%)"
-        }
-        
-        # 构建 3 类概率字典
-        prob_dict_3 = {}
-        for i, prob in enumerate(probabilities_3):
+        prob_dict = {}
+        for i, prob in enumerate(probabilities):
             class_num = i + 1
-            prob_dict_3[class_num] = round(float(prob), 4)
-        
-        # 构建 5 类概率字典
-        prob_dict_5 = {}
-        for i, prob in enumerate(probabilities_5):
-            class_num = i + 1
-            prob_dict_5[class_num] = round(float(prob), 4)
+            prob_dict[class_num] = round(float(prob), 4)
         
         return {
             "timestamp": features.get("timestamp"),
-            "prediction_3class": {
-                "prediction": int(prediction_3),
-                "prediction_label": class_labels_3.get(prediction_3, f"类别 {prediction_3}"),
-                "probabilities": prob_dict_3
-            },
-            "prediction_5class": {
-                "prediction": int(prediction_5),
-                "prediction_label": class_labels_5.get(prediction_5, f"类别 {prediction_5}"),
-                "probabilities": prob_dict_5
-            },
+            "prediction": int(prediction),
+            "prediction_label": class_labels.get(prediction, f"类别 {prediction}"),
+            "probabilities": prob_dict,
             "features_count": len(xgb_trainer.feature_columns),
             "inst_id": "ETH-USDT-SWAP"
         }

@@ -58,7 +58,8 @@ class Feature1HCreator(BaseTechnicalCalculator):
         # 获取最后一个记录的小时和星期几
         last_record = candles1h[-1]
         record_hour = last_record['record_hour']
-        day_of_week = last_record['record_day_of_week']
+        # merge的时候是从数据库取的，但从okex取的时候就不一样
+        day_of_week = last_record['day_of_week']
         # 转换为弧度 (24小时 = 2π 弧度)
         hour_rad = record_hour * (2 * np.pi / 24)
         # 计算周期性特征

@@ -112,7 +112,7 @@ class FeatureMerge:
                     "bar": bar,
                     "record_dt": dt.date(),
                     "record_hour": dt.hour,
-                    "record_day_of_week": dt.weekday()
+                    "day_of_week": dt.weekday()
                 }
                 converted.append(converted_candle)
             except (IndexError, ValueError) as e:

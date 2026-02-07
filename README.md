@@ -8,34 +8,35 @@ A Python project that uses XGBoost to predict cryptocurrency price movements bas
 - 💾 Stores data in MongoDB for persistence
 - 🤖 Trains XGBoost classification model for price movement prediction
 - 🔮 Outputs classification with confidence scores
-- 🎯 3-class classification system for price movement prediction (82%+ accuracy)
+- 🎯 5-class classification system for price movement prediction (74.75% accuracy)
 
 ## Model Performance
 
 ### Version 1.0
-- **Accuracy**: 82.18%
-- **Cross-validation Accuracy**: 80.15% (±2.06%)
-- **Features**: 27 technical indicators
-- **Training Samples**: 12,119
-- **Classes**: 3 (Down/Sideways/Up)
+- **Accuracy**: 74.75%
+- **Cross-validation Accuracy**: 73.50% (±3.21%)
+- **Features**: 40 technical indicators
+- **Training Samples**: 13,338
+- **Classes**: 5 (暴跌/下跌/横盘/上涨/暴涨)
 
 ### Classification System
-The model predicts price movements in following categories:
 
-| Class | Description | Price Range | Confidence |
-|-------|-------------|-------------|------------|
-| 1 | Down | < -1.2% | 63.79% |
-| 2 | Sideways | -1.2% to 1.2% | 54.31% |
-| 3 | Up | > 1.2% | 64.89% |
+| Class | Description | Price Range | Confidence | Training Samples |
+|-------|-------------|-------------|------------|-----------------|
+| 1 | 暴跌 (Heavy Down) | < -3.6% | 76.11% | 1,763 |
+| 2 | 下跌 (Down) | -3.6% to -1.2% | 58.71% | 2,536 |
+| 3 | 横盘 (Sideways) | -1.2% to 1.2% | 59.24% | 4,710 |
+| 4 | 上涨 (Up) | 1.2% to 3.6% | 56.70% | 2,626 |
+| 5 | 暴涨 (Heavy Up) | > 3.6% | 74.81% | 1,703 |
 
 ### Top 5 Features
 | Rank | Feature | Description |
 |------|---------|-------------|
-| 1 | day_of_week | Day of week (cyclical feature) |
-| 2 | ema_48_4h | 4-hour 48-period EMA (medium-term trend) |
-| 3 | rsi_1d | Daily RSI (long-term momentum) |
-| 4 | atr_1d | Daily ATR (long-term volatility) |
-| 5 | ema_26_4h | 4-hour 26-period EMA (medium-term trend) |
+| 1 | bollinger_position_1d | Daily Bollinger Band position (long-term trend context) |
+| 2 | atr_1d | Daily ATR (long-term volatility) |
+| 3 | ema_48_4h | 4-hour 48-period EMA (medium-term trend) |
+| 4 | bollinger_upper_1d | Daily Bollinger Band upper (resistance level) |
+| 5 | bollinger_lower_1d | Daily Bollinger Band lower (support level) |
 
 ## Prerequisites
 - Python 3.8+
@@ -124,7 +125,7 @@ curl http://localhost:8000/fetch/2-normalize?inst_id=ETH-USDT-SWAP&bar=1H
 
 #### Step 3: Merge Features
 ```bash
-curl http://localhost:8000/fetch/3-merge-feature?inst_id=ETH-USDT-SWAP&limit=5000
+curl http://localhost:8000/fetch/3-merge-feature?inst_id=ETH-USDT-SWAP&limit=3000
 ```
 
 #### Step 4: Label Data
@@ -142,11 +143,11 @@ Or train programmatically:
 ```python
 from src.models.xgboost_trainer import xgb_trainer
 
-# Train model
+# Train 5-class model
 results = xgb_trainer.train_model(
     inst_id='ETH-USDT-SWAP',
     bar='1H',
-    limit=15000,
+    limit=3000,
     test_size=0.2,
     cv_folds=5,
     use_class_weight=True
@@ -163,8 +164,8 @@ xgb_trainer.load_model()
 # Make prediction
 predictions, probabilities = xgb_trainer.predict_single(feature_dict)
 
-# Convert back to original labels (1-3)
-predicted_class = predictions[0]
+# Convert back to original labels (1-5)
+predicted_class = predictions[0] + 1  # 0-indexed to 1-indexed
 confidence = probabilities[predicted_class - 1]
 ```
 
@@ -192,6 +193,44 @@ curl http://localhost:8000/fetch/3-merge-feature?inst_id=ETH-USDT-SWAP&limit=500
 # Label data
 curl http://localhost:8000/fetch/4-lable?inst_id=ETH-USDT-SWAP
 ```
+
+#### Prediction
+```bash
+# Get real-time prediction (5-class model)
+curl http://localhost:8000/fetch/5-predict?inst_id=ETH-USDT-SWAP
+```
+
+Response example:
+```json
+{
+  "timestamp": 1738780800000,
+  "prediction": 3,
+  "prediction_label": "横盘 (-1.2% ~ 1.2%)",
+  "probabilities": {
+    "1": 0.10,
+    "2": 0.05,
+    "3": 0.70,
+    "4": 0.10,
+    "5": 0.05
+  }
+}
+```
+
+#### Production Mode
+To disable data collection endpoints in production:
+```env
+PRODUCTION_MODE=true
+```
+
+When `PRODUCTION_MODE=true`, the following endpoints will return 403 Forbidden:
+- `/fetch/history-count`
+- `/fetch/pull-quick`
+- `/fetch/1-pull-large`
+- `/fetch/2-normalize`
+- `/fetch/3-merge-feature`
+- `/fetch/4-lable`
+
+Only the prediction endpoint `/fetch/5-predict` will remain available.
 
 ### Programmatic Usage
 
@@ -284,28 +323,28 @@ ema_12_value = EMA_12.calculate(close_prices)
 3. **4H (4-hour)**: Medium-term confirmation (RSI, MACD, Trend Continuation, ATR, ADX, EMA)
 4. **1D (1-day)**: Long-term context (RSI, ATR)
 
-#### Feature Engineering (27 Features)
+#### Feature Engineering (40 Features)
 ```
-1-Hour Base Layer (5 features):
+1-Hour Base Layer (7 features):
   - close_1h_normalized, volume_1h_normalized
-  - rsi_14_1h, macd_line_1h, macd_signal_1h
-
-Time Encoding (3 features):
+  - rsi_14_1h, macd_line_1h, macd_signal_1h, macd_histogram_1h
   - hour_cos, hour_sin, day_of_week
 
 15-Minute High-Frequency (7 features):
   - rsi_14_15m, volume_impulse_15m
-  - macd_line_15m, macd_signal_15m
+  - macd_line_15m, macd_signal_15m, macd_histogram_15m
   - atr_15m, stoch_k_15m, stoch_d_15m
 
-4-Hour Medium-Term (10 features):
+4-Hour Medium-Term (13 features):
   - rsi_14_4h, trend_continuation_4h
-  - macd_line_4h, macd_signal_4h
+  - macd_line_4h, macd_signal_4h, macd_histogram_4h
   - atr_4h, adx_4h, plus_di_4h, minus_di_4h
   - ema_12_4h, ema_26_4h, ema_48_4h
+  - ema_cross_4h_12_26, ema_cross_4h_26_48
 
-1-Day Long-Term (2 features):
+1-Day Long-Term (5 features):
   - rsi_14_1d, atr_1d
+  - bollinger_upper_1d, bollinger_lower_1d, bollinger_position_1d
 ```
 
 #### Model Architecture
@@ -321,23 +360,29 @@ Time Encoding (3 features):
 |-----------|-----------|---------|---------|
 | RSI | All | 14 | Momentum oscillator |
 | MACD | All | (12, 26, 9) | Trend following |
+| MACD Histogram | All | (12, 26, 9) | Momentum strength |
 | ATR | All | 14 | Volatility measurement |
 | Stochastic | 15m | (14, 3) | Overbought/Oversold |
 | ADX | 4h | 14 | Trend strength |
 | +DI/-DI | 4h | 14 | Trend direction |
 | EMA | 4h | 12, 26, 48 | Exponential moving average |
+| EMA Crossover | 4h | (12, 26), (26, 48) | Trend change signal |
 | Trend Continuation | 4h | 48 | Trend strength metric |
+| Bollinger Bands | 1d | (20, 2.0) | Price range & position |
 
 ## Configuration
 
 ### Classification Thresholds
+
 Edit `src/config/settings.py` to adjust classification ranges:
 
 ```python
 CLASSIFICATION_THRESHOLDS = {
-    1: (-100, -1.2),    # Down: < -1.2%
-    2: (-1.2, 1.2),     # Sideways: -1.2% to 1.2%
-    3: (1.2, 100),       # Up: > 1.2%
+    1: (-100, -3.6),     # 暴跌: < -3.6%
+    2: (-3.6, -1.2),     # 下跌: -3.6% to -1.2%
+    3: (-1.2, 1.2),      # 横盘: -1.2% to 1.2%
+    4: (1.2, 3.6),       # 上涨: 1.2% to 3.6%
+    5: (3.6, 100),       # 暴涨: > 3.6%
 }
 ```
 
@@ -347,13 +392,17 @@ XGBoost parameters can be adjusted in `src/models/xgboost_trainer.py`:
 ```python
 params = {
     'objective': 'multi:softprob',
-    'num_class': 3,
-    'max_depth': 6,
-    'learning_rate': 0.1,
+    'num_class': 5,
+    'max_depth': 8,
+    'learning_rate': 0.05,
     'subsample': 0.8,
     'colsample_bytree': 0.8,
     'random_state': 42,
-    'eval_metric': 'mlogloss'
+    'eval_metric': 'mlogloss',
+    'min_child_weight': 3,
+    'gamma': 0.1,
+    'reg_alpha': 0.1,
+    'reg_lambda': 1
 }
 ```
 
@@ -395,12 +444,16 @@ python -m pytest tests/calculator/test_adx_calculator.py -v
 
 ### Version 1.0
 - Initial release with multi-timeframe feature engineering
-- 27 technical indicators across 4 timeframes (15m, 1H, 4H, 1D)
-- 3-class classification system (82% accuracy)
-- Support for: RSI, MACD, ATR, Stochastic, ADX, EMA, Trend Continuation
+- 40 technical indicators across 4 timeframes (15m, 1H, 4H, 1D)
+- 5-class classification system (74.75% accuracy)
+- Support for: RSI, MACD, MACD Histogram, ATR, Stochastic, ADX, EMA, EMA Crossover, Trend Continuation, Bollinger Bands
 - Comprehensive test coverage for all calculators
 - RESTful API for data pipeline automation
+- Real-time prediction endpoint with 5-class model support
 - Unique indexes on features collection to prevent duplicate data (inst_id, timestamp, bar)
+- Unique indexes on candlesticks collection to prevent duplicate data (inst_id, timestamp, bar)
+- Unique indexes on normalizer collection to prevent duplicate data (inst_id, bar, column)
+- Production mode to disable data collection endpoints (PRODUCTION_MODE=true)
 - Automatic duplicate cleanup on index creation
 
 ## License

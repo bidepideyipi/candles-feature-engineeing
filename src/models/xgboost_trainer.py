@@ -26,7 +26,7 @@ class XGBoostTrainer:
     """Trains and manages XGBoost classification models."""
     
     # 非特征字段列表（需要从训练数据中排除）
-    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label'}
+    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label' , 'price_change_pct'}
     
     def __init__(self, model_save_path: str = config.MODEL_SAVE_PATH):
         """Initialize the trainer."""
@@ -138,8 +138,6 @@ class XGBoostTrainer:
             'num_class': num_classes,  # 3类
             'max_depth': 8,           # 增加深度
             'learning_rate': 0.05,     # 降低学习率
-            'num_boost_round': 300,     # 增加迭代次数
-            'early_stopping_rounds': 20,
             'subsample': 0.8,
             'colsample_bytree': 0.8,
             'random_state': 42,
@@ -155,9 +153,9 @@ class XGBoostTrainer:
         self.model = xgb.train(
             params,
             dtrain,
-            num_boost_round=300,
+            num_boost_round=300,      # 增加迭代次数
             evals=[(dtrain, 'train'), (dtest, 'test')],
-            early_stopping_rounds=20,          # 从 10 增加到 20
+            early_stopping_rounds=20,  # 从 10 增加到 20
             verbose_eval=False
         )
         
