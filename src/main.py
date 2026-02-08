@@ -7,6 +7,12 @@ import argparse
 import sys
 import logging
 from pathlib import Path
+import uvicorn
+
+# Add project root to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from api.api_base import app
 
 # Create logger
 logger = logging.getLogger(__name__)
@@ -20,9 +26,6 @@ if not logging.getLogger().hasHandlers():
             logging.StreamHandler(sys.stdout)
         ]
     )
-
-# Add project root to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def main():
@@ -43,6 +46,13 @@ def main():
     print(f"- http://{args.host}:{args.port}/docs")
     print(f"- http://{args.host}:{args.port}/redoc")
     print()
+    
+    uvicorn.run(
+        "api.api_base:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload
+    )
 
 
 if __name__ == '__main__':

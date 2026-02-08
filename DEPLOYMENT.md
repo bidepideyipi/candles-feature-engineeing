@@ -1,157 +1,410 @@
-# CentOS 7 部署指南
+# 部署指南
 
-本文档介绍如何在 CentOS 7 上部署技术分析助手项目。
+本文档介绍如何部署 Technical Analysis Helper 项目到生产环境。
 
-## 前置要求
+## 目录
 
-已安装以下服务：
-- MongoDB
-- Redis
-- Node.js
-- PM2
+- [Docker 部署（推荐）](#docker-部署推荐)
+- [环境配置](#环境配置)
+- [数据持久化](#数据持久化)
+- [监控和日志](#监控和日志)
+- [故障排除](#故障排除)
 
-## 部署步骤
+---
 
-### 1. 上传项目文件
+## Docker 部署（推荐）
 
-将项目文件上传到服务器：
+### 前置要求
 
-```bash
-# 使用 scp 上传
-scp -r /path/to/technical_analysis_helper root@your-server:/opt/
+- Docker 20.10+
+- Docker Compose 2.0+
+- 至少 2GB 可用内存
+- 至少 5GB 可用磁盘空间
 
-# 或使用 git clone
-cd /opt
-git clone <your-repo-url> technical_analysis_helper
-cd technical_analysis_helper
-```
+### 快速开始
 
-### 2. 配置 MongoDB 和 Redis 服务
+#### 1. 克隆仓库
 
 ```bash
-cd scripts
-chmod +x setup_services.sh
-./setup_services.sh
+git clone <repository-url>
+cd technial_analysis_helper
 ```
 
-此脚本会：
-- 创建 MongoDB 和 Redis 的配置文件
-- 设置服务文件
-- 启动服务并设置开机自启
-- 检查服务状态和端口监听
+#### 2. 准备模型文件
 
-### 3. 执行部署脚本
+将训练好的模型文件放到 `models/` 目录：
 
 ```bash
-cd /opt/technical_analysis_helper
-chmod +x scripts/deploy.sh
-./deploy.sh
+# 必需文件
+models/xgboost_model.json
+models/xgboost_model_scaler.pkl
+models/xgboost_model_features.json
 ```
 
-此脚本会：
-- 创建项目目录
-- 检查并安装 Python 依赖
-- 配置环境变量
-- 创建必要的目录
-- 检查并启动 MongoDB 和 Redis
-- 使用 PM2 启动应用
-
-### 4. 配置环境变量
-
-编辑 `.env` 文件：
+#### 3. 启动服务
 
 ```bash
-vim /opt/technical_analysis_helper/.env
-```
-
-根据实际情况修改配置：
-
-```env
-# MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DATABASE=technical_analysis
-MONGODB_CANDLESTICKS_COLLECTION=candlesticks
-MONGODB_FEATURES_COLLECTION=features
-MONGODB_NORMALIZER_COLLECTION=normalizer
-
-# Redis Configuration
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=1
-
-# OKEx API Configuration
-OKEX_API_BASE_URL=https://www.okx.com
-
-# Model Configuration
-MODEL_SAVE_PATH=models/xgboost_model.json
-FEATURE_WINDOW_SIZE=300
-```
-
-### 5. 使用 PM2 管理应用
-
-```bash
-# 启动应用
-pm2 start ecosystem.config.js
-
-# 查看应用状态
-pm2 status
+# 使用 Docker Compose 启动所有服务
+docker-compose up -d
 
 # 查看日志
-pm2 logs
+docker-compose logs -f api
 
-# 重启应用
-pm2 restart all
-
-# 停止应用
-pm2 stop all
-
-# 删除应用
-pm2 delete all
-
-# 保存 PM2 配置
-pm2 save
-
-# 设置 PM2 开机自启
-pm2 startup
+# 停止服务
+docker-compose down
 ```
 
-### 6. 验证部署
+#### 4. 验证部署
 
 ```bash
-# 检查应用状态
-pm2 status
+# 检查服务状态
+docker-compose ps
 
 # 检查 API 健康状态
 curl http://localhost:8000/health
 
-# 查看 API 文档
-# 在浏览器中打开：http://your-server-ip:8000/docs
+# 测试预测接口
+curl http://localhost:8000/fetch/5-predict?inst_id=ETH-USDT-SWAP
 ```
 
-## 防火墙配置
+### 服务架构
 
-如果服务器启用了防火墙，需要开放 8000 端口：
+Docker Compose 会启动以下服务：
+
+```
+┌─────────────────────────────────────────────┐
+│          technical-analysis-network          │
+├─────────────────────────────────────────────┤
+│  MongoDB    Redis       API            │
+│  :27017     :6379       :8000           │
+└─────────────────────────────────────────────┘
+```
+
+**服务说明：**
+
+| 服务 | 容器名 | 端口 | 作用 |
+|------|---------|------|------|
+| MongoDB | technical-analysis-mongodb | 27017 | 数据存储 |
+| Redis | technical-analysis-redis | 6379 | 缓存和限流 |
+| API | technical-analysis-api | 8000 | API 服务 |
+
+---
+
+## 环境配置
+
+### Docker Compose 环境变量
+
+在 `docker-compose.yml` 中配置的环境变量：
+
+```yaml
+api:
+  environment:
+    # 生产模式
+    - PRODUCTION_MODE=true
+    
+    # MongoDB 配置
+    - MONGODB_URI=mongodb://mongodb:27017
+    - MONGODB_DATABASE=technical_analysis
+    - MONGODB_CANDLESTICKS_COLLECTION=candlesticks
+    - MONGODB_FEATURES_COLLECTION=features
+    - MONGODB_NORMALIZER_COLLECTION=normalizer
+    
+    # Redis 配置
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_DB=1
+    
+    # OKX API 配置
+    - OKEX_API_BASE_URL=https://www.okx.com
+    - INST_ID=ETH-USDT-SWAP
+```
+
+### 自定义配置
+
+#### 修改数据库密码
+
+```yaml
+mongodb:
+  environment:
+    MONGO_INITDB_ROOT_USERNAME: admin
+    MONGO_INITDB_ROOT_PASSWORD: your_secure_password
+    MONGO_INITDB_DATABASE: technical_analysis
+```
+
+**重要：** 同时更新 API 服务的 `MONGODB_URI` 环境变量以包含认证信息：
+
+```yaml
+api:
+  environment:
+    - MONGODB_URI=mongodb://admin:your_secure_password@mongodb:27017/technical_analysis?authSource=admin
+```
+
+#### 修改端口映射
+
+```yaml
+services:
+  mongodb:
+    ports:
+      - "27018:27017"  # 映射到主机 27018
+  
+  redis:
+    ports:
+      - "6380:6379"   # 映射到主机 6380
+  
+  api:
+    ports:
+      - "8080:8000"   # 映射到主机 8080
+```
+
+#### 添加更多交易对
+
+```yaml
+api:
+  environment:
+    - INST_ID=ETH-USDT-SWAP
+    # 可以添加其他交易对
+    # - INST_ID=BTC-USDT-SWAP
+```
+
+---
+
+## 数据持久化
+
+### Docker 卷配置
+
+默认情况下，Docker Compose 会创建以下卷来持久化数据：
+
+```yaml
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+```
+
+### 查看数据卷
 
 ```bash
-# 开放 8000 端口
-firewall-cmd --permanent --add-port=8000/tcp
-firewall-cmd --reload
+# 列出所有卷
+docker volume ls
 
-# 查看已开放的端口
-firewall-cmd --list-ports
+# 查看卷详情
+docker volume inspect technial_analysis_helper_mongodb_data
+docker volume inspect technial_analysis_helper_redis_data
 ```
 
-## Nginx 反向代理配置（可选）
+### 备份数据
 
-如果需要使用域名访问，可以配置 Nginx 反向代理：
+#### MongoDB 备份
+
+```bash
+# 创建备份目录
+mkdir -p backups/mongodb
+
+# 备份 MongoDB
+docker exec technical-analysis-mongodb mongodump \
+  --host=localhost \
+  --port=27017 \
+  --db=technical_analysis \
+  --username=admin \
+  --password=admin123 \
+  --archive=/backup/mongodb/backup_$(date +%Y%m%d_%H%M%S).gz
+
+# 复制到主机
+docker cp technical-analysis-mongodb:/backup ./backups/mongodb
+```
+
+#### 恢复 MongoDB
+
+```bash
+# 停止 MongoDB 服务
+docker-compose stop mongodb
+
+# 删除现有数据
+docker volume rm technial_analysis_helper_mongodb_data
+
+# 创建新卷
+docker volume create technial_analysis_helper_mongodb_data
+
+# 启动 MongoDB
+docker-compose up -d mongodb
+
+# 恢复备份
+docker cp ./backups/mongodb/backup.gz technical-analysis-mongodb:/backup/
+docker exec technical-analysis-mongodb mongorestore \
+  --host=localhost \
+  --port=27017 \
+  --db=technical_analysis \
+  --username=admin \
+  --password=admin123 \
+  /backup/backup.gz
+```
+
+#### 模型文件备份
+
+```bash
+# 创建备份目录
+mkdir -p backups/models
+
+# 备份模型文件
+cp -r models backups/models/backup_$(date +%Y%m%d_%H%M%S)
+```
+
+---
+
+## 监控和日志
+
+### 查看实时日志
+
+```bash
+# 查看所有服务日志
+docker-compose logs -f
+
+# 只查看 API 日志
+docker-compose logs -f api
+
+# 查看最近 100 行
+docker-compose logs --tail=100 api
+
+# 查看特定时间的日志
+docker-compose logs --since="2024-01-01T00:00:00" api
+```
+
+### 日志文件
+
+日志会持久化到 `./logs/` 目录：
+
+```bash
+# 查看日志目录
+ls -lh logs/
+
+# 实时查看日志
+tail -f logs/api.log
+```
+
+### 健康检查
+
+```bash
+# 检查 API 健康状态
+curl http://localhost:8000/health
+
+# 响应
+# {"status":"healthy"}
+```
+
+### 性能监控
+
+使用 Docker 监控命令：
+
+```bash
+# 查看资源使用
+docker stats
+
+# 查看容器详细信息
+docker inspect technical-analysis-api
+
+# 查看容器资源限制
+docker stats --no-stream technical-analysis-api
+```
+
+---
+
+## 更新部署
+
+### 更新代码
+
+```bash
+# 拉取最新代码
+git pull origin main
+
+# 重新构建镜像
+docker-compose build
+
+# 重启服务
+docker-compose up -d
+```
+
+### 更新模型
+
+```bash
+# 停止服务
+docker-compose down
+
+# 替换模型文件
+cp /path/to/new/models/xgboost_model.json models/
+cp /path/to/new/models/xgboost_model_scaler.pkl models/
+cp /path/to/new/models/xgboost_model_features.json models/
+
+# 重新启动
+docker-compose up -d
+```
+
+### 更新依赖
+
+```bash
+# 重新构建镜像（会自动运行 pip install -r requirements.txt）
+docker-compose build --no-cache
+
+# 重启服务
+docker-compose up -d
+```
+
+---
+
+## 生产环境优化
+
+### 资源限制
+
+在 `docker-compose.yml` 中添加资源限制：
+
+```yaml
+api:
+  deploy:
+    resources:
+      limits:
+        cpus: '2.0'
+        memory: 4G
+      reservations:
+        cpus: '1.0'
+        memory: 2G
+```
+
+### 安全配置
+
+#### 1. 使用环境变量管理敏感信息
+
+创建 `.env` 文件（不要提交到 Git）：
+
+```env
+MONGO_INITDB_ROOT_PASSWORD=your_secure_password
+```
+
+在 `docker-compose.yml` 中引用：
+
+```yaml
+mongodb:
+  environment:
+    MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+```
+
+#### 2. 限制网络访问
+
+```yaml
+api:
+  networks:
+    - technical-analysis-network
+  # 只允许来自特定网络的访问
+```
+
+#### 3. 使用反向代理（Nginx）
 
 ```nginx
 server {
     listen 80;
-    server_name api.yourdomain.com;
+    server_name your-domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -160,173 +413,170 @@ server {
 }
 ```
 
-重启 Nginx：
+### 多实例部署
+
+```yaml
+# docker-compose.production.yml
+services:
+  api-1:
+    build: .
+    environment:
+      - INST_ID=ETH-USDT-SWAP
+    ports:
+      - "8001:8000"
+  
+  api-2:
+    build: .
+    environment:
+      - INST_ID=BTC-USDT-SWAP
+    ports:
+      - "8002:8000"
+```
 
 ```bash
-nginx -t
-systemctl restart nginx
+# 启动多个实例
+docker-compose -f docker-compose.production.yml up -d
 ```
 
-## 常见问题
+---
 
-### 1. MongoDB 连接失败
+## 故障排除
 
-检查 MongoDB 服务状态：
+### 容器无法启动
 
 ```bash
-systemctl status mongod
+# 查看容器日志
+docker-compose logs api
+
+# 检查容器状态
+docker-compose ps
+
+# 查看详细错误
+docker-compose logs --tail=50 api
 ```
 
-检查 MongoDB 日志：
+常见问题：
+
+| 问题 | 原因 | 解决方案 |
+|------|------|---------|
+| 端口冲突 | 8000 端口被占用 | 修改 docker-compose.yml 中的端口映射 |
+| 内存不足 | 容器 OOM | 增加内存限制或关闭其他服务 |
+| 模型文件缺失 | 无法加载模型 | 确保 models/ 目录包含所有必需文件 |
+| MongoDB 连接失败 | 数据库未就绪 | 检查 MongoDB 容器日志和健康状态 |
+
+### 数据库连接问题
 
 ```bash
-tail -f /var/log/mongodb/mongod.log
+# 测试 MongoDB 连接
+docker exec -it technical-analysis-mongodb mongosh \
+  --username admin \
+  --password admin123 \
+  --eval "db.adminCommand('ping')"
+
+# 测试 Redis 连接
+docker exec -it technical-analysis-redis redis-cli ping
+
+# 查看数据库数据
+docker exec -it technical-analysis-mongodb mongosh \
+  --username admin \
+  --password admin123 \
+  technical_analysis
+
+# 列出集合
+show collections
+
+# 查看数据数量
+db.candlesticks.count()
+db.features.count()
 ```
 
-### 2. Redis 连接失败
-
-检查 Redis 服务状态：
+### API 响应缓慢
 
 ```bash
-systemctl status redis
-redis-cli ping
+# 检查容器资源使用
+docker stats technical-analysis-api
+
+# 查看日志中的慢查询
+docker-compose logs api | grep "slow"
+
+# 增加 API 容器的资源限制
 ```
 
-### 3. PM2 启动失败
+### 重新构建镜像
 
-查看 PM2 日志：
+如果遇到依赖或缓存问题：
 
 ```bash
-pm2 logs
+# 停止所有服务
+docker-compose down
+
+# 删除旧镜像
+docker rmi technial_analysis_helper-api
+
+# 重新构建（不使用缓存）
+docker-compose build --no-cache
+
+# 启动服务
+docker-compose up -d
 ```
 
-检查 Python 依赖是否安装完整：
+---
+
+## 生产环境检查清单
+
+部署到生产环境前，请确认：
+
+- [ ] 修改了默认数据库密码
+- [ ] 配置了环境变量（不硬编码敏感信息）
+- [ ] 设置了适当的资源限制
+- [ ] 配置了日志持久化
+- [ ] 设置了数据备份策略
+- [ ] 配置了健康检查
+- [ ] 配置了反向代理（如需要）
+- [ ] 测试了所有 API 端点
+- [ ] 验证了模型文件存在
+- [ ] 配置了监控和告警
+- [ ] 设置了自动重启策略
+- [ ] 限制了不必要的端口暴露
+- [ ] 配置了 HTTPS（通过反向代理）
+
+---
+
+## 清理
+
+### 清理未使用的资源
 
 ```bash
-cd /opt/technical_analysis_helper
-pip3 list | grep -E "pandas|numpy|xgboost"
+# 停止所有服务
+docker-compose down
+
+# 删除所有容器、网络、卷
+docker-compose down -v
+
+# 清理未使用的镜像
+docker image prune -a
+
+# 清理未使用的卷
+docker volume prune
 ```
 
-### 4. 端口被占用
-
-检查端口占用：
+### 完全清理（警告：会删除所有数据）
 
 ```bash
-netstat -tuln | grep 8000
+# 停止并删除所有服务
+docker-compose down -v
+
+# 删除项目相关的所有镜像
+docker rmi $(docker images | grep technial_analysis_helper | awk '{print $3}')
 ```
 
-停止占用端口的进程或修改 `main.py` 中的端口号。
+---
 
-## 监控和维护
+## 支持
 
-### 日志管理
+如遇部署问题，请检查：
 
-PM2 日志文件位置：
-- 错误日志：`/opt/technical_analysis_helper/logs/pm2-error.log`
-- 输出日志：`/opt/technical_analysis_helper/logs/pm2-out.log`
-- 合并日志：`/opt/technical_analysis_helper/logs/pm2-combined.log`
-
-### 日志轮转
-
-配置日志轮转，避免日志文件过大：
-
-```bash
-vim /etc/logrotate.d/technical-analysis
-```
-
-内容：
-
-```
-/opt/technical_analysis_helper/logs/*.log {
-    daily
-    rotate 14
-    compress
-    delaycompress
-    notifempty
-    create 0644 root root
-    sharedscripts
-    postrotate
-        pm2 reload all
-    endscript
-}
-```
-
-### 性能监控
-
-使用 PM2 Plus 或其他监控工具监控应用性能：
-
-```bash
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 10M
-pm2 set pm2-logrotate:retain 7
-```
-
-## 更新部署
-
-更新代码后重新部署：
-
-```bash
-cd /opt/technical_analysis_helper
-git pull  # 或上传新文件
-
-# 重启应用
-pm2 restart all
-
-# 或使用零停机更新
-pm2 reload all
-```
-
-## 备份策略
-
-### MongoDB 数据备份
-
-```bash
-# 创建备份脚本
-vim /opt/scripts/backup_mongodb.sh
-```
-
-内容：
-
-```bash
-#!/bin/bash
-BACKUP_DIR="/opt/backups/mongodb"
-DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
-
-mongodump --host localhost --port 27017 --db technical_analysis --out $BACKUP_DIR/backup_$DATE
-
-# 删除 7 天前的备份
-find $BACKUP_DIR -type d -mtime +7 -exec rm -rf {} \;
-```
-
-设置定时任务：
-
-```bash
-crontab -e
-```
-
-添加：
-
-```
-0 2 * * * /opt/scripts/backup_mongodb.sh
-```
-
-### 模型文件备份
-
-```bash
-# 备份模型文件
-cp /opt/technical_analysis_helper/models/*.json /opt/backups/models/
-cp /opt/technical_analysis_helper/models/*.pkl /opt/backups/models/
-```
-
-## 安全建议
-
-1. **修改 MongoDB 默认端口**
-2. **启用 MongoDB 认证**
-3. **限制 Redis 访问 IP**
-4. **使用 HTTPS（通过 Nginx 配置 SSL）**
-5. **定期更新系统和依赖包**
-
-## 联系方式
-
-如有问题，请联系技术支持。
+1. Docker 日志：`docker-compose logs -f`
+2. 容器状态：`docker-compose ps`
+3. 资源使用：`docker stats`
+4. 项目文档：[README.md](README.md) 或 [README_CN.md](README_CN.md)

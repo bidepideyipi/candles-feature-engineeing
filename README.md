@@ -38,6 +38,211 @@ A Python project that uses XGBoost to predict cryptocurrency price movements bas
 | 4 | bollinger_upper_1d | Daily Bollinger Band upper (resistance level) |
 | 5 | bollinger_lower_1d | Daily Bollinger Band lower (support level) |
 
+## Deployment
+
+### Docker Deployment（推荐）
+
+Docker 是最推荐的部署方式，因为它提供了一致的环境和简化的配置。
+
+#### 前置要求
+
+- Docker 20.10+
+- Docker Compose 2.0+
+- 至少 2GB 可用内存
+- 至少 5GB 可用磁盘空间
+
+#### 快速开始
+
+1. **准备模型文件**
+
+将训练好的模型文件放到 `models/` 目录：
+
+```bash
+models/xgboost_model.json
+models/xgboost_model_scaler.pkl
+models/xgboost_model_features.json
+```
+
+2. **启动服务**
+
+```bash
+# 使用 Docker Compose 启动所有服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f api
+
+# 停止服务
+docker-compose down
+
+# 停止并删除数据卷（慎用）
+docker-compose down -v
+```
+
+3. **验证服务**
+
+```bash
+# 检查容器状态
+docker-compose ps
+
+# 检查健康状态
+curl http://localhost:8000/health
+
+# 测试预测接口
+curl http://localhost:8000/fetch/5-predict?inst_id=ETH-USDT-SWAP
+```
+
+4. **更新应用**
+
+当代码更新后，重新构建并启动：
+
+```bash
+docker-compose up -d --build
+```
+
+#### 数据持久化
+
+Docker Compose 配置了以下数据卷：
+
+- `mongodb_data`: MongoDB 数据
+- `redis_data`: Redis 数据
+
+数据会保存在 Docker 卷中，即使容器重启也不会丢失。
+
+#### 环境配置
+
+创建 `.env` 文件（参考 `.env.example`）：
+
+```env
+# MongoDB Configuration
+MONGODB_URI=mongodb://mongodb:27017
+MONGODB_DATABASE=technical_analysis
+MONGODB_CANDLESTICKS_COLLECTION=candlesticks
+MONGODB_FEATURES_COLLECTION=features
+MONGODB_NORMALIZER_COLLECTION=normalizer
+
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_DB=1
+
+# OKX API Configuration
+OKEX_API_BASE_URL=https://www.okx.com
+INST_ID=ETH-USDT-SWAP
+
+# Model Configuration
+MODEL_SAVE_PATH=models/xgboost_model.json
+
+# Production Mode
+PRODUCTION_MODE=true
+```
+
+#### 监控和日志
+
+```bash
+# 查看所有服务日志
+docker-compose logs
+
+# 查看特定服务日志
+docker-compose logs api
+docker-compose logs mongodb
+docker-compose logs redis
+
+# 实时跟踪日志
+docker-compose logs -f api
+
+# 查看容器资源使用情况
+docker stats
+```
+
+#### 扩展应用
+
+如需扩展应用实例（例如增加 API 实例）：
+
+```yaml
+# 在 docker-compose.yml 中修改
+services:
+  api:
+    deploy:
+      replicas: 3
+```
+
+#### 备份和恢复
+
+```bash
+# 备份 MongoDB 数据
+docker-compose exec mongodb mongodump --archive=/data/db/backup_$(date +%Y%m%d).archive
+
+# 恢复 MongoDB 数据
+docker-compose exec -T mongodb mongorestore --archive=/data/db/backup_20250208.archive
+
+# 备份模型文件
+docker cp technical-analysis-api:/app/models ./models_backup
+```
+
+#### 故障排除
+
+1. **容器无法启动**
+
+```bash
+# 查看详细日志
+docker-compose logs api
+
+# 检查配置
+docker-compose config
+
+# 重新构建
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+2. **MongoDB 连接失败**
+
+```bash
+# 检查 MongoDB 容器状态
+docker-compose ps mongodb
+
+# 查看 MongoDB 日志
+docker-compose logs mongodb
+
+# 进入 MongoDB 容器
+docker-compose exec mongodb bash
+```
+
+3. **Redis 连接失败**
+
+```bash
+# 检查 Redis 容器状态
+docker-compose ps redis
+
+# 查看 Redis 日志
+docker-compose logs redis
+
+# 测试 Redis 连接
+docker-compose exec redis redis-cli ping
+```
+
+4. **端口冲突**
+
+如果默认端口被占用，修改 `docker-compose.yml` 中的端口映射：
+
+```yaml
+services:
+  mongodb:
+    ports:
+      - "27018:27017"  # 使用 27018 端口
+  
+  redis:
+    ports:
+      - "6380:6379"   # 使用 6380 端口
+  
+  api:
+    ports:
+      - "8001:8000"   # 使用 8001 端口
+```
+
+### Traditional Deployment
+
 ## Prerequisites
 - Python 3.8+
 - MongoDB (local or remote)
