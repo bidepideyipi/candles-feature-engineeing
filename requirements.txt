@@ -1,28 +1,21 @@
 # Core dependencies
-pandas
-numpy
-xgboost>=3.1.0
-scikit-learn>=1.8.0
-matplotlib>=3.10.8
-seaborn
-requests
-pymongo
-python-dotenv
-joblib
+pandas==3.0.0
+numpy==2.4.1
+xgboost==3.1.3
+scikit-learn==1.8.0
+matplotlib==3.10.8
+seaborn==0.13.2
+requests==2.32.5
+pymongo==4.16.0
+python-dotenv==1.2.1
+joblib==1.5.3
 
 # Web framework
-fastapi
-uvicorn[standard]
+fastapi==0.128.0
+uvicorn==0.40.0
 
 # Technical analysis libraries
-TA-Lib
+TA-Lib==0.4.28
 
 # Cache
-redis
-
-# Development tools
-black
-flake8
-pytest
-ipython
-jupyter
+redis==7.1.0

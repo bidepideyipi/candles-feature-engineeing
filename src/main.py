@@ -3,8 +3,6 @@
 Main entry point for the Technical Analysis Helper API.
 Starts the FastAPI server.
 """
-
-import uvicorn
 import argparse
 import sys
 import logging
@@ -45,16 +43,6 @@ def main():
     print(f"- http://{args.host}:{args.port}/docs")
     print(f"- http://{args.host}:{args.port}/redoc")
     print()
-    
-    # Run the FastAPI application
-    uvicorn.run(
-        "api.api_base:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        log_level="info",
-        log_config=None  # Use default uvicorn logging configuration
-    )
 
 
 if __name__ == '__main__':
