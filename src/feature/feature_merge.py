@@ -81,6 +81,62 @@ class FeatureMerge:
         
         return features
     
+    def quick_process_eth_from_mongodb(self) -> Dict[str, Any]:
+        """
+        快速处理 ETH-USDT-SWAP 的数据进行特征提取（无网络版）
+        从 MongoDB candlestick 集合获取最近的数据并计算特征
+        """
+        try:
+            # 从 MongoDB 获取最近的 K 线数据
+            # 获取最近的 48 条数据，不需要 before 参数（获取最新的数据）
+            candles1H = candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, 
+                bar='1H', 
+                limit=48
+            )[::-1]  # 反转顺序以匹配 _common_process 期望的顺序
+            
+            candles15m = candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, 
+                bar='15m', 
+                limit=48
+            )[::-1]
+            
+            candles4H = candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, 
+                bar='4H', 
+                limit=48
+            )[::-1]
+            
+            candles1D = candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, 
+                bar='1D', 
+                limit=48
+            )[::-1]
+            
+            # 检查数据是否足够
+            if not candles1H or not candles15m or not candles4H or not candles1D:
+                log.error("MongoDB 中数据不足")
+                return None
+            
+            # 调用通用处理方法获取特征
+            features = self._common_process(
+                candles1H=candles1H, 
+                candles15m=candles15m, 
+                candles4H=candles4H, 
+                candles1D=candles1D
+            )
+            
+            # 设置 timestamp
+            if features and candles1H:
+                features["timestamp"] = candles1H[-1].get("timestamp")
+                log.info(f"成功从 MongoDB 提取 ETH 特征，timestamp: {features.get('timestamp')}")
+            
+            return features
+            
+        except Exception as e:
+            log.error(f"从 MongoDB 提取特征失败: {e}")
+            return None
+    
     def _convert_realtime_candles(self, candles: List[List[str]], bar: str) -> List[Dict[str, Any]]:
         """
         将实时 API 返回的 K 线数据转换为 _common_process 支持的格式

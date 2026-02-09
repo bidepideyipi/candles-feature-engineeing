@@ -154,7 +154,7 @@ def merge_label(inst_id: str = "ETH-USDT-SWAP", onlyFixNone: bool = True):
     }
 
 @router.get("/5-predict")
-def predict_price_movement() -> Dict[str, Any]:
+def predict_price_movement(fromLocal: bool = True) -> Dict[str, Any]:
     """
     预测价格走势
     
@@ -177,7 +177,10 @@ def predict_price_movement() -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Failed to load model. Please train the model first.")
         
         feature_merge = FeatureMerge()
-        features = feature_merge.quick_process_eth()
+        if fromLocal:
+            features = feature_merge.quick_process_eth_from_mongodb()
+        else:
+            features = feature_merge.quick_process_eth()
         
         if features is None:
             raise HTTPException(status_code=404, detail="Failed to extract features from realtime data")
@@ -210,3 +213,4 @@ def predict_price_movement() -> Dict[str, Any]:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
