@@ -38,6 +38,8 @@ dmypy.json
 .hypothesis/
 notebooks/
 scripts/
+mongodb_data/
+redis_data/
 tests/
 .qoder/
 .vscode/

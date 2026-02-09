@@ -226,3 +226,5 @@ config/local_settings.py
 data/
 raw_data/
 processed_data/
+mongodb_data/
+redis_data/
