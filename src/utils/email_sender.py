@@ -5,6 +5,7 @@ Handles SMTP email configuration and sending.
 
 import logging
 import smtplib
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
@@ -30,6 +31,15 @@ class EmailSender:
         
         if not self.smtp_config:
             logger.warning(f"No SMTP configuration found for {smtp_item}")
+    
+    def get_current_time(self) -> str:
+        """
+        Get current time formatted string.
+        
+        Returns:
+            Current time in format: YYYY-MM-DD HH:MM:SS
+        """
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     def _get_smtp_config(self) -> Optional[Dict[str, str]]:
         """
