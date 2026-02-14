@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.api_fetch_okex import router as fetch_router
+from api.api_config import router as config_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -20,6 +21,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(fetch_router)
+app.include_router(config_router)
 
 # Root endpoint
 @app.get("/")
@@ -31,7 +33,8 @@ def read_root():
             "/health",
             "/5-predict",
             "/api/prediction",
-            "/fetch/okex"
+            "/fetch/okex",
+            "/config"
         ]
     }
 
