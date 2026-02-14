@@ -22,7 +22,7 @@ services:
       - INST_ID=ETH-USDT-SWAP
       - TZ=Asia/Shanghai
       - SCHEDULE_ENABLED=true
-      - SCHEDULE_INTERVAL=2
+      - SCHEDULE_INTERVAL=12
       - SCHEDULE_RECIPIENT=284160266@qq.com
       - SCHEDULE_DATA_SOURCE=api
     volumes:
