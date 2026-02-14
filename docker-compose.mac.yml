@@ -3,18 +3,20 @@ services:
     build: .
     container_name: technical-analysis-api
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - PRODUCTION_MODE=true
-      - MONGODB_URI=mongodb://host.docker.internal:27017
+      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017}
       - MONGODB_DATABASE=technical_analysis
       - MONGODB_CANDLESTICKS_COLLECTION=candlesticks
       - MONGODB_FEATURES_COLLECTION=features
       - MONGODB_NORMALIZER_COLLECTION=normalizer
       - MONGODB_CONFIG_COLLECTION=config
-      - REDIS_HOST=host.docker.internal
+      - REDIS_HOST=${REDIS_HOST:-host.docker.internal}
       - REDIS_PORT=6379
       - REDIS_DB=1
       - OKEX_API_BASE_URL=https://www.okx.com
