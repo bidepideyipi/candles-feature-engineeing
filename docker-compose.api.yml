@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    container_name: technical-analysis-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PRODUCTION_MODE=true
+      - MONGODB_URI=mongodb://localhost:27018
+      - MONGODB_DATABASE=technical_analysis
+      - MONGODB_CANDLESTICKS_COLLECTION=candlesticks
+      - MONGODB_FEATURES_COLLECTION=features
+      - MONGODB_NORMALIZER_COLLECTION=normalizer
+      - MONGODB_CONFIG_COLLECTION=config
+      - REDIS_HOST=localhost
+      - REDIS_PORT=6379
+      - REDIS_DB=1
+      - OKEX_API_BASE_URL=https://www.okx.com
+      - INST_ID=ETH-USDT-SWAP
+      - TZ=Asia/Shanghai
+      - SCHEDULE_ENABLED=true
+      - SCHEDULE_INTERVAL=12
+      - SCHEDULE_RECIPIENT=284160266@qq.com
+      - SCHEDULE_DATA_SOURCE=mongodb
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
