@@ -27,6 +27,12 @@ class TestCandlestickHandler:
         
     def test_fetcher_data(self):
         
+        count_15m_befor = candlestick_handler.count(inst_id="ETH-USDT-SWAP", bar="15m")
+        count_1H_befor = candlestick_handler.count(inst_id="ETH-USDT-SWAP", bar="1H")
+        count_4H_befor = candlestick_handler.count(inst_id="ETH-USDT-SWAP", bar="4H")
+        count_1D_befor = candlestick_handler.count(inst_id="ETH-USDT-SWAP", bar="1D")
+        logging.info(f"15m: {count_15m_befor}, 1H: {count_1H_befor}, 4H: {count_4H_befor}, 1D: {count_1D_befor}")   
+        
         # 默认拉10万条，测试的时候可以少拉一些
         okex_fetcher.fetch_historical_data(inst_id="ETH-USDT-SWAP", bar="1D", max_records=600)
         okex_fetcher.fetch_historical_data(inst_id="ETH-USDT-SWAP", bar="4H", max_records=3600)

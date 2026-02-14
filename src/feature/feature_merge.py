@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, Any, List
@@ -9,6 +10,7 @@ from collect.candlestick_handler import candlestick_handler
 from collect.normalization_handler import normalization_handler
 from collect.feature_handler import feature_handler
 from collect.okex_fetcher import okex_fetcher
+from collect.async_candlestick_handler import async_candlestick_handler
 
 # Create logger
 log = logging.getLogger(__name__)
@@ -29,14 +31,28 @@ class FeatureMerge:
             n += 1
         return True
 
-    def process(self, before: int = None) -> int:
+    async def process_async(self, before: int = None) -> int:
         """
-        合并1小时、15分钟和4小时的特征参数
+        合并1小时、15分钟和4小时的特征参数（异步版本）
         """
-        candles1H = candlestick_handler.get_candlestick_data(inst_id = self.inst_id, bar = '1H', limit = 48, before = before)[::-1]
-        candles15m = candlestick_handler.get_candlestick_data(inst_id = self.inst_id, bar = '15m', limit = 48, before = before)[::-1]
-        candles4H = candlestick_handler.get_candlestick_data(inst_id = self.inst_id, bar = '4H', limit = 48, before = before)[::-1]
-        candles1D = candlestick_handler.get_candlestick_data(inst_id = self.inst_id, bar = '1D', limit = 48, before = before)[::-1]
+        results = await asyncio.gather(
+            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1H', limit=48, before=before),
+            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='15m', limit=48, before=before),
+            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='4H', limit=48, before=before),
+            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1D', limit=48, before=before),
+            return_exceptions=True
+        )
+        
+        candles1H = results[0][::-1] if not isinstance(results[0], Exception) else []
+        candles15m = results[1][::-1] if not isinstance(results[1], Exception) else []
+        candles4H = results[2][::-1] if not isinstance(results[2], Exception) else []
+        candles1D = results[3][::-1] if not isinstance(results[3], Exception) else []
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                bars = ['1H', '15m', '4H', '1D']
+                log.error(f"Failed to get {bars[i]} candlestick data: {result}")
+        
         features = self._common_process(candles1H=candles1H,candles15m=candles15m,candles4H=candles4H,candles1D=candles1D)
         
         # 获取 candles1H 的最后一条数据的 timestamp
@@ -54,7 +70,13 @@ class FeatureMerge:
             return features["timestamp"]
         except Exception as e:
             print(f"保存特征数据失败: {e}")
-            return None      
+            return None
+    
+    def process(self, before: int = None) -> int:
+        """
+        合并1小时、15分钟和4小时的特征参数（同步包装器）
+        """
+        return asyncio.run(self.process_async(before=before))      
     
     def quick_process_eth(self) -> Dict[str, Any]:
         """
@@ -277,6 +299,13 @@ class FeatureMerge:
             "hour_cos": feature1h_result.get("hour_cos"),
             "hour_sin": feature1h_result.get("hour_sin"),
             "day_of_week": feature1h_result.get("day_of_week"),
+            
+            # 1小时Pinbar特征（只保留比例特征）
+            "upper_shadow_ratio_1h": feature1h_result.get("upper_shadow_ratio_1h"),
+            "lower_shadow_ratio_1h": feature1h_result.get("lower_shadow_ratio_1h"),
+            "total_shadow_ratio_1h": feature1h_result.get("total_shadow_ratio_1h"),
+            "shadow_imbalance_1h": feature1h_result.get("shadow_imbalance_1h"),
+            "body_ratio_1h": feature1h_result.get("body_ratio_1h"),
             
             # 15分钟高频特征
             "rsi_14_15m": feature15m_result.get("rsi_14_15m"),

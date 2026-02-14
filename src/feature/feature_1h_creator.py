@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 
 from utils.rsi_calculator import RSI_CALCULATOR
 from utils.macd_calculator import MACD_CALCULATOR
+from utils.pinbar_calculator import PINBAR_CALCULATOR
 from utils.calculator_interface import BaseTechnicalCalculator
 
 class Feature1HCreator(BaseTechnicalCalculator):
@@ -17,6 +18,7 @@ class Feature1HCreator(BaseTechnicalCalculator):
     def __init__(self, close_mean: float, close_std: float, vol_mean: float, vol_std: float):
         self.rsi_calculator = RSI_CALCULATOR
         self.macd_calculator = MACD_CALCULATOR
+        self.pinbar_calculator = PINBAR_CALCULATOR
         self.close_mean = close_mean
         self.close_std = close_std
         self.vol_mean = vol_mean
@@ -66,6 +68,14 @@ class Feature1HCreator(BaseTechnicalCalculator):
         hour_cos = round(np.cos(hour_rad), 4)
         hour_sin = round(np.sin(hour_rad), 4)
         
+        # 计算 Pinbar 特征
+        pinbar_features = self.pinbar_calculator.calculate(
+            pd.Series(item['high'] for item in candles1h),
+            pd.Series(item['low'] for item in candles1h),
+            pd.Series(item['open'] for item in candles1h),
+            pd.Series(item['close'] for item in candles1h)
+        )
+        
         return {
             "close_1h_normalized": close_1h_normalized,
             "volume_1h_normalized": volume_1h_normalized,
@@ -76,5 +86,10 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "hour_cos": hour_cos,
             "hour_sin": hour_sin,
             "day_of_week": day_of_week,
-        }
+            "upper_shadow_ratio_1h": round(pinbar_features['upper_shadow_ratio'], 2),
+            "lower_shadow_ratio_1h": round(pinbar_features['lower_shadow_ratio'], 2),
+            "total_shadow_ratio_1h": round(pinbar_features['total_shadow_ratio'], 2),
+            "shadow_imbalance_1h": round(pinbar_features['shadow_imbalance'], 2),
+            "body_ratio_1h": round(pinbar_features['body_ratio'], 2),
+          }
     
