@@ -89,16 +89,18 @@ class ADXCalculator(BaseTechnicalCalculator):
         plus_dm_smooth = plus_dm_series.rolling(window=self.window, min_periods=1).mean()
         minus_dm_smooth = minus_dm_series.rolling(window=self.window, min_periods=1).mean()
         
+        # 避免除零导致的 inf/NaN
+        tr_smooth = tr_smooth.replace(0, 1)  # 如果TR为0，用1替代
+        
         # 4. Calculate +DI and -DI
         plus_di = 100 * (plus_dm_smooth / tr_smooth)
         minus_di = 100 * (minus_dm_smooth / tr_smooth)
         
-        # Handle division by zero
-        plus_di = plus_di.replace([np.inf, -np.inf], np.nan)
-        minus_di = minus_di.replace([np.inf, -np.inf], np.nan)
-        
         # 5. Calculate DX (Directional Index)
-        dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
+        di_sum = plus_di + minus_di
+        di_sum = di_sum.replace(0, 1)  # 如果DI和为0，用1替代
+        
+        dx = 100 * (abs(plus_di - minus_di) / di_sum)
         dx = dx.replace([np.inf, -np.inf], np.nan)
         
         # 6. Calculate ADX (smoothed DX)

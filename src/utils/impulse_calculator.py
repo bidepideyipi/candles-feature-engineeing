@@ -27,6 +27,9 @@ class ImpulseCalculator(BaseTechnicalCalculator):
         # 比如窗口为7 [1,1,1,1,1,1,1,2]  这个2应该是2.0，如果使用shift(1)前的计算方式会是1.78
         avg_volume = volume_series.rolling(window=20, min_periods=1).mean().shift(1)
         
+        # 避免除零导致的 NaN
+        avg_volume = avg_volume.replace(0, 1)  # 如果平均成交量为0，用1替代
+        
         # 计算成交量脉冲（当前成交量相对平均值的比例）
         volume_impulse = volume_series / avg_volume
         

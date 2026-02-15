@@ -106,7 +106,6 @@ class PinbarCalculator(BaseTechnicalCalculator):
             'body_height': body_height,
             'upper_shadow_ratio': upper_shadow_ratio,
             'lower_shadow_ratio': lower_shadow_ratio,
-            'total_shadow_ratio': total_shadow_ratio,
             'shadow_imbalance': shadow_imbalance,
             'body_ratio': body_ratio,
             'is_long_upper_shadow': int(is_long_upper_shadow),

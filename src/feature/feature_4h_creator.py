@@ -10,6 +10,7 @@ from utils.trend_continuation_calulator import TREND_CONTINUATION_CALCULATOR
 from utils.atr_calculator import ATR_CALCULATOR
 from utils.adx_calculator import ADX_CALCULATOR
 from utils.ema_calculator import EMA_12, EMA_26, EMA_48, EMACrossoverSignal
+from utils.pinbar_calculator import PINBAR_CALCULATOR
 
 class Feature4HCreator(BaseTechnicalCalculator):
 
@@ -27,6 +28,7 @@ class Feature4HCreator(BaseTechnicalCalculator):
         self.ema_12 = EMA_12
         self.ema_26 = EMA_26
         self.ema_48 = EMA_48
+        self.pinbar_calculator = PINBAR_CALCULATOR
         self.close_mean = close_mean
         self.close_std = close_std
         
@@ -70,10 +72,10 @@ class Feature4HCreator(BaseTechnicalCalculator):
         ema_26_4h = round((ema_26_4h - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
         ema_48_4h = round((ema_48_4h - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
         
-        close4H = pd.Series(item['close'] for item in candles4H)
         high4H = pd.Series(item['high'] for item in candles4H)
-        low4H = pd.Series(item['low'] for item in candles4H)    
-        df = pd.DataFrame({'high': high4H, 'low': low4H, 'close': close4H})
+        low4H = pd.Series(item['low'] for item in candles4H)
+        open4H = pd.Series(item['open'] for item in candles4H)
+        df = pd.DataFrame({'high': high4H, 'low': low4H, 'open': open4H, 'close': close4H})
         
         atr_4h = round(self.atr_calculator.calculate(df), 0)  # 4小时波动率保留3位小数
         
@@ -84,6 +86,13 @@ class Feature4HCreator(BaseTechnicalCalculator):
         
         ema_cross_4h_12_26 = EMACrossoverSignal.calculate_from_values(ema_12_4h, ema_26_4h)
         ema_cross_4h_26_48 = EMACrossoverSignal.calculate_from_values(ema_26_4h, ema_48_4h)
+        
+        pinbar_features = self.pinbar_calculator.calculate(
+            high_prices=df['high'],
+            low_prices=df['low'],
+            open_prices=df['open'],
+            close_prices=df['close']
+        )
         
         return {
             "rsi_14_4h": rsi_14_4h,
@@ -100,5 +109,9 @@ class Feature4HCreator(BaseTechnicalCalculator):
             "ema_48_4h": ema_48_4h,
             "ema_cross_4h_12_26": ema_cross_4h_12_26,
             "ema_cross_4h_26_48": ema_cross_4h_26_48,
+            "upper_shadow_ratio_4h": round(pinbar_features['upper_shadow_ratio'], 2),
+            "lower_shadow_ratio_4h": round(pinbar_features['lower_shadow_ratio'], 2),
+            "shadow_imbalance_4h": round(pinbar_features['shadow_imbalance'], 2),
+            "body_ratio_4h": round(pinbar_features['body_ratio'], 2),
         }
     

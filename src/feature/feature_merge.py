@@ -27,8 +27,12 @@ class FeatureMerge:
         last_timestamp = before
         n = 0
         while last_timestamp is not None and n < limit:
-            last_timestamp = self.process(before = last_timestamp)
-            n += 1
+            try:
+                last_timestamp = self.process(before = last_timestamp)
+                n += 1
+            except Exception as e:
+                log.error(f"处理特征时发生错误: {e}", exc_info=True)
+                break
         return True
 
     async def process_async(self, before: int = None) -> int:
@@ -74,9 +78,33 @@ class FeatureMerge:
     
     def process(self, before: int = None) -> int:
         """
-        合并1小时、15分钟和4小时的特征参数（同步包装器）
+        合并1小时、15分钟和4小时的特征参数（同步版本）
+        始终使用同步 handler，避免与现有事件循环冲突
         """
-        return asyncio.run(self.process_async(before=before))      
+        candles1H = candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1H', limit=48, before=before)[::-1]
+        candles15m = candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='15m', limit=48, before=before)[::-1]
+        candles4H = candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='4H', limit=48, before=before)[::-1]
+        candles1D = candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1D', limit=48, before=before)[::-1]
+        
+        if not candles1H or not candles15m or not candles4H or not candles1D:
+            log.warning(f"获取数据失败或为空, 1H: {len(candles1H) if candles1H else 0}, 15m: {len(candles15m) if candles15m else 0}, 4H: {len(candles4H) if candles4H else 0}, 1D: {len(candles1D) if candles1D else 0}")
+            return None
+        
+        features = self._common_process(candles1H=candles1H,candles15m=candles15m,candles4H=candles4H,candles1D=candles1D)
+        
+        if candles1H and features:
+            features["timestamp"] = candles1H[-1].get("timestamp")
+        else:
+            return None
+        
+        try:
+            success = feature_handler.save_features([features])
+            if success:
+                print(f"成功保存特征数据，timestamp: {features['timestamp']}")
+            return features["timestamp"]
+        except Exception as e:
+            print(f"保存特征数据失败: {e}")
+            return None      
     
     def quick_process_eth(self) -> Dict[str, Any]:
         """
@@ -303,7 +331,6 @@ class FeatureMerge:
             # 1小时Pinbar特征（只保留比例特征）
             "upper_shadow_ratio_1h": feature1h_result.get("upper_shadow_ratio_1h"),
             "lower_shadow_ratio_1h": feature1h_result.get("lower_shadow_ratio_1h"),
-            "total_shadow_ratio_1h": feature1h_result.get("total_shadow_ratio_1h"),
             "shadow_imbalance_1h": feature1h_result.get("shadow_imbalance_1h"),
             "body_ratio_1h": feature1h_result.get("body_ratio_1h"),
             
@@ -333,12 +360,24 @@ class FeatureMerge:
             "ema_cross_4h_12_26": feature4h_result.get("ema_cross_4h_12_26"),
             "ema_cross_4h_26_48": feature4h_result.get("ema_cross_4h_26_48"),
             
+            # 4小时Pinbar特征
+            "upper_shadow_ratio_4h": feature4h_result.get("upper_shadow_ratio_4h"),
+            "lower_shadow_ratio_4h": feature4h_result.get("lower_shadow_ratio_4h"),
+            "shadow_imbalance_4h": feature4h_result.get("shadow_imbalance_4h"),
+            "body_ratio_4h": feature4h_result.get("body_ratio_4h"),
+            
             # 1天长期特征
             "rsi_14_1d": feature1D_result.get("rsi_14_1d"),
             "atr_1d": feature1D_result.get("atr_1d"),
             "bollinger_upper_1d": feature1D_result.get("bollinger_upper_1d"),
             "bollinger_lower_1d": feature1D_result.get("bollinger_lower_1d"),
             "bollinger_position_1d": feature1D_result.get("bollinger_position_1d"),
+            
+            # 1天Pinbar特征
+            "upper_shadow_ratio_1d": feature1D_result.get("upper_shadow_ratio_1d"),
+            "lower_shadow_ratio_1d": feature1D_result.get("lower_shadow_ratio_1d"),
+            "shadow_imbalance_1d": feature1D_result.get("shadow_imbalance_1d"),
+            "body_ratio_1d": feature1D_result.get("body_ratio_1d"),
             
             # 基本信息
             "inst_id": self.inst_id,

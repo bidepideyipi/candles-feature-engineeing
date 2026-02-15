@@ -55,9 +55,13 @@ class BollingerBandsCalculator(BaseTechnicalCalculator):
         
         # Calculate position (0-1 scale)
         band_width = upper_band - lower_band
+        
+        # 避免除零导致的 inf/NaN
+        band_width = band_width.replace(0, 1)  # 如果带宽为0，用1替代
+        
         position = (prices_series - lower_band) / band_width
         
-        # Handle division by zero and invalid values
+        # Handle invalid values and clip to [0, 1]
         position = position.replace([np.inf, -np.inf], np.nan)
         position = position.clip(0, 1)
         

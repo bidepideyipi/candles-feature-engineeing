@@ -88,7 +88,6 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "day_of_week": day_of_week,
             "upper_shadow_ratio_1h": round(pinbar_features['upper_shadow_ratio'], 2),
             "lower_shadow_ratio_1h": round(pinbar_features['lower_shadow_ratio'], 2),
-            "total_shadow_ratio_1h": round(pinbar_features['total_shadow_ratio'], 2),
             "shadow_imbalance_1h": round(pinbar_features['shadow_imbalance'], 2),
             "body_ratio_1h": round(pinbar_features['body_ratio'], 2),
           }

@@ -65,7 +65,11 @@ class StochasticCalculator(BaseTechnicalCalculator):
         lowest_low = low_prices.rolling(window=self.k_window).min()
         highest_high = high_prices.rolling(window=self.k_window).max()
         
-        k_percent = 100 * ((close_prices - lowest_low) / (highest_high - lowest_low))
+        # 避免除零导致的 NaN
+        price_range = highest_high - lowest_low
+        price_range = price_range.replace(0, 1)  # 如果范围为0，用1替代
+        
+        k_percent = 100 * ((close_prices - lowest_low) / price_range)
         
         d_percent = k_percent.rolling(window=self.d_window).mean()
         

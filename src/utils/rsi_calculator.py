@@ -44,6 +44,9 @@ class RSICalculator(BaseTechnicalCalculator):
         avg_gain = gain.rolling(window=self.window, min_periods=1).mean()
         avg_loss = loss.rolling(window=self.window, min_periods=1).mean()
         
+        # 避免除零导致的 inf/NaN
+        avg_loss = avg_loss.replace(0, 1)  # 如果平均亏损为0，用1替代
+        
         # Calculate RS and RSI
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
