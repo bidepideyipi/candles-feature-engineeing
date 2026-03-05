@@ -59,22 +59,6 @@ class PredictionScheduler:
             logger.error(f"Error checking confidence: {e}", exc_info=True)
             return False
     
-    def send_alert_email(self, prediction_data: Dict[str, Any]) -> bool:
-        """
-        Send email alert for high-confidence prediction.
-        
-        Args:
-            prediction_data: Prediction data from predict_price_movement()
-            
-        Returns:
-            bool: True if email sent successfully
-        """
-        logger.info("Sending email alert...")
-        return email_sender.send_trading_alert(
-            to_email=self.recipient,
-            prediction_data=prediction_data
-        )
-    
     def predict_price_movement(self) -> Dict[str, Any]:
         """
         Predict price movement and return prediction data.
@@ -125,36 +109,6 @@ class PredictionScheduler:
             logger.error(f"Prediction error: {e}")
             return None
     
-    def check_email_config(self) -> bool:
-        """
-        Check if email configuration is set up in MongoDB.
-        
-        Returns:
-            bool: True if email configuration exists
-        """
-        try:
-            smtp_config = config_handler.get_config_dict("smtp.qq.com")
-            
-            if not smtp_config:
-                logger.error("Email configuration not found in MongoDB")
-                logger.error("Please configure SMTP settings:")
-                logger.error("  POST /config?item=smtp.qq.com&key=account&value=your_email@qq.com&desc=发件人邮箱")
-                logger.error("  POST /config?item=smtp.qq.com&key=authCode&value=your_smtp_auth_code&desc=发件人邮箱授权码")
-                return False
-            
-            required_keys = ['account', 'authCode']
-            for key in required_keys:
-                if key not in smtp_config:
-                    logger.error(f"Missing email config key: {key}")
-                    return False
-            
-            logger.info("Email configuration validated")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error checking email config: {e}")
-            return False
-    
     def run(self):
         """
         Run prediction cycle at configured interval.
@@ -165,10 +119,7 @@ class PredictionScheduler:
         logger.info(f"Alert recipient: {self.recipient}")
         logger.info(f"Data source: {'MongoDB' if self.from_local else 'API'}")
         logger.info(f"Confidence threshold: 60%")
-        
-        if not self.check_email_config():
-            logger.warning("Email configuration not found, scheduled task will run but no alerts will be sent")
-        
+              
         cycle_count = 0
         while True:
             try:
@@ -188,7 +139,10 @@ class PredictionScheduler:
                     try:
                         if self.check_prediction_confidence(prediction_data, threshold=0.4):
                             logger.info("Confidence meets threshold, sending email alert...")
-                            self.send_alert_email(prediction_data)
+                            email_sender.send_trading_alert(
+                                to_email=self.recipient,
+                                prediction_data=prediction_data
+                            )
                         else:
                             logger.info("Confidence below threshold, no email sent")
                     except Exception as e:

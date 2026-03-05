@@ -61,7 +61,7 @@ class Config:
     
     # Scheduled Task Configuration
     SCHEDULE_ENABLED = os.getenv('SCHEDULE_ENABLED', 'false').lower() == 'true'
-    SCHEDULE_INTERVAL = int(os.getenv('SCHEDULE_INTERVAL', '12'))  # minutes
+    SCHEDULE_INTERVAL = int(os.getenv('SCHEDULE_INTERVAL', '1'))  # minutes
     SCHEDULE_RECIPIENT = os.getenv('SCHEDULE_RECIPIENT', '284160266@qq.com')
     SCHEDULE_DATA_SOURCE = os.getenv('SCHEDULE_DATA_SOURCE', 'mongodb')  # 'mongodb' or 'api'
 

@@ -142,7 +142,7 @@ class EmailSender:
                 logger.warning("Invalid prediction data")
                 return False
             
-            confidence = probabilities.get(str(prediction), 0)
+            confidence = probabilities.get(prediction, 0)
             
             # Format timestamp
             if timestamp:
