@@ -121,17 +121,16 @@ class EmailSender:
             logger.error(f"Failed to send email: {e}")
             return False
     
-    def send_trading_alert(self, to_email: str, prediction_data: Dict[str, Any], confidence_threshold: float = 0.6) -> bool:
+    def send_trading_alert(self, to_email: str, prediction_data: Dict[str, Any]) -> bool:
         """
         Send trading alert email based on prediction data.
         
         Args:
             to_email: Recipient email address
             prediction_data: Prediction data from predict_price_movement()
-            confidence_threshold: Minimum confidence to send alert (default: 0.6)
             
         Returns:
-            bool: True if sent, False if confidence too low or send failed
+            bool: True if sent, False otherwise
         """
         try:
             prediction = prediction_data.get('prediction')
@@ -143,13 +142,7 @@ class EmailSender:
                 logger.warning("Invalid prediction data")
                 return False
             
-            # Calculate confidence
             confidence = probabilities.get(str(prediction), 0)
-            
-            # Check if confidence meets threshold
-            if confidence < confidence_threshold:
-                logger.info(f"Confidence {confidence:.2%} below threshold {confidence_threshold:.2%}, skipping email")
-                return False
             
             # Format timestamp
             if timestamp:

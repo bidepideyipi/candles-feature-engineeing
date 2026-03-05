@@ -69,24 +69,11 @@ class PredictionScheduler:
         Returns:
             bool: True if email sent successfully
         """
-        try:
-            logger.info("Preparing to send email alert...")
-            result = email_sender.send_trading_alert(
-                to_email=self.recipient,
-                prediction_data=prediction_data,
-                confidence_threshold=0.4
-            )
-            
-            if result:
-                logger.info(f"Email alert sent to {self.recipient}")
-            else:
-                logger.warning(f"Email alert not sent (confidence below threshold or send failed)")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error sending alert email: {e}", exc_info=True)
-            return False
+        logger.info("Sending email alert...")
+        return email_sender.send_trading_alert(
+            to_email=self.recipient,
+            prediction_data=prediction_data
+        )
     
     def predict_price_movement(self) -> Dict[str, Any]:
         """
