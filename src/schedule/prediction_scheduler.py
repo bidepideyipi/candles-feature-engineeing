@@ -74,7 +74,7 @@ class PredictionScheduler:
             result = email_sender.send_trading_alert(
                 to_email=self.recipient,
                 prediction_data=prediction_data,
-                confidence_threshold=0.6
+                confidence_threshold=0.4
             )
             
             if result:
