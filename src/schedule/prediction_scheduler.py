@@ -53,14 +53,7 @@ class PredictionScheduler:
                 logger.info(f"Confidence {confidence:.2%} below threshold {threshold:.0%}, alert skipped")
                 return False
             
-            if prediction == 2:
-                return probabilities.get(2, 0) - probabilities.get(4, 0) >= threshold
-            if prediction == 4:
-                return probabilities.get(4, 0) - probabilities.get(2, 0) >= threshold
-            if prediction == 1:
-                return probabilities.get(1, 0) - probabilities.get(5, 0) >= threshold
-            if prediction == 5:
-                return probabilities.get(5, 0) - probabilities.get(1, 0) >= threshold
+            return True
             
         except Exception as e:
             logger.error(f"Error checking confidence: {e}", exc_info=True)
@@ -206,7 +199,7 @@ class PredictionScheduler:
                     
                     # Check confidence and send email alert
                     try:
-                        if self.check_prediction_confidence(prediction_data, threshold=0.6):
+                        if self.check_prediction_confidence(prediction_data, threshold=0.4):
                             logger.info("Confidence meets threshold, sending email alert...")
                             self.send_alert_email(prediction_data)
                         else:
