@@ -37,6 +37,8 @@ class Config:
     
     # Model Configuration
     MODEL_SAVE_PATH = os.getenv('MODEL_SAVE_PATH', 'models/xgboost_model.json')
+    MODEL_SAVE_PATH_LOW = os.getenv('MODEL_SAVE_PATH_LOW', 'models/xgboost_model_low.json')
+    MODEL_SAVE_PATH_HIGH = os.getenv('MODEL_SAVE_PATH_HIGH', 'models/xgboost_model_high.json')
     FEATURE_WINDOW_SIZE = int(os.getenv('FEATURE_WINDOW_SIZE', '300'))
     
     # Time windows for technical indicators (in hours)
@@ -53,6 +55,18 @@ class Config:
         3: (-1.2, 1.2),      # 横盘
         4: (1.2, 3.6),       # 上涨
         5: (3.6, 100),       # 暴涨    
+    }
+    
+    CLASSIFICATION_THRESHOLDS_HIGH = {   
+        1: (-100, 1.2),      # 没涨
+        2: (1.2, 3.6),        # 上涨
+        3: (3.6, 100),        # 暴涨
+    }
+    
+    CLASSIFICATION_THRESHOLDS_LOW = {   
+        1: (-100, -3.6),      # 暴跌
+        2: (-3.6, -1.2),      # 下跌
+        3: (1.2, 100),       # 没跌
     }
     
     # Environment Mode

@@ -14,7 +14,7 @@ class TestFeatureCreate:
     """
     def test_meger_the_top_one(self):
         feature_label = FeatureLabel()
-        feature_label.loop(inst_id='ETH-USDT-SWAP', limit=20000)
+        feature_label.loop(inst_id='ETH-USDT-SWAP', limit=200)
         assert True
     
     

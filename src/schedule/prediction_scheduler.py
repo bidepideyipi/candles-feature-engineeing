@@ -102,7 +102,9 @@ class PredictionScheduler:
                 "prediction_label": class_labels.get(prediction, f"类别 {prediction}"),
                 "probabilities": prob_dict,
                 "features_count": len(xgb_trainer.feature_columns),
-                "inst_id": "ETH-USDT-SWAP"
+                "inst_id": "ETH-USDT-SWAP",
+                "close_1h_original": features.get("close_1h_original"),
+                "volume_1h_original": features.get("volume_1h_original")
             }
             
         except Exception as e:

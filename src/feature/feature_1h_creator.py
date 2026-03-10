@@ -78,7 +78,9 @@ class Feature1HCreator(BaseTechnicalCalculator):
         
         return {
             "close_1h_normalized": close_1h_normalized,
+            "close_1h_original": close1h.iloc[-1],
             "volume_1h_normalized": volume_1h_normalized,
+            "volume_1h_original": volume1h.iloc[-1],
             "rsi_14_1h": rsi_14_1h,
             "macd_line_1h": macd_line_1h,
             "macd_signal_1h": macd_signal_1h,

@@ -26,12 +26,13 @@ class XGBoostTrainer:
     """Trains and manages XGBoost classification models."""
     
     # 非特征字段列表（需要从训练数据中排除）
-    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label' , 'price_change_pct'}
+    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label', 'label_high', 'label_low', 'price_change_pct'}
     
-    def __init__(self, model_save_path: str = config.MODEL_SAVE_PATH):
+    def __init__(self, model_save_path: str = config.MODEL_SAVE_PATH, label_type: str = 'label'):
         """Initialize the trainer."""
         self.model = None
         self.scaler = StandardScaler()
+        self.label_type = label_type
         self.feature_columns = None
         self.model_save_path = model_save_path
         
@@ -134,16 +135,16 @@ class XGBoostTrainer:
         
         # XGBoost parameters (新版)
         params = {
-            'objective': 'multi:softprob',
+            'objective': 'multi:softprob', #定义模型要解决的机器学习问题类型，多分类标准选择，是 Kaggle 等竞赛的标准做法
             'num_class': num_classes,  # 3类
-            'max_depth': 8,           # 增加深度
-            'learning_rate': 0.05,     # 降低学习率
-            'subsample': 0.8,
-            'colsample_bytree': 0.8,
-            'random_state': 42,
-            'eval_metric': 'mlogloss',
-            'min_child_weight': 3,
-            'gamma': 0.1,
+            'max_depth': 10,           # 增加深度8到10；深度越大，模型越复杂，过拟合风险增加
+            'learning_rate': 0.03,     # 降低学习率0.05到0.03；学习率越小，模型越复杂，过拟合风险增加
+            'subsample': 0.9, #训练每棵树时随机采样的样本比例，这是 Bagging​ 思想在 boosting 中的应用
+            'colsample_bytree': 0.9, #训练每棵树时随机采样的特征比例 中等特征（20-100维）：0.5-0.9
+            'random_state': 42, #控制随机种子，确保结果可重复，42 是机器学习社区的"传统"随机种子（源自《银河系漫游指南》）
+            'eval_metric': 'mlogloss', #模型训练时的评估标准，多分类损失函数，用于评估模型在训练集上的性能
+            'min_child_weight': 0, #对于分类任务，样本权重通常为1，所以它就是叶节点中最少的样本数；如果一个叶节点的样本权重和 < min_child_weight，这个节点不会再分裂
+            'gamma': 0.1, #至少要10%的收益才投资（适中），控制树的复杂度，防止生成无意义的细枝末节，值越大，树越简单
             'reg_alpha': 0.1,
             'reg_lambda': 1
         }
@@ -250,23 +251,23 @@ class XGBoostTrainer:
         df = pd.DataFrame(features)
         
         # 检查是否有 label 字段
-        if 'label' not in df.columns:
-            raise ValueError("Features data missing 'label' field")
+        if self.label_type not in df.columns:
+            raise ValueError(f"Features data missing '{self.label_type}' field")
         
         # 移除没有 label 的记录
-        df = df[df['label'].notna()]
+        df = df[df[self.label_type].notna()]
         if len(df) == 0:
-            raise ValueError("No features with valid labels found")
+            raise ValueError(f"No features with valid labels found")
         
         # 提取目标变量，转换为0索引（XGBoost要求标签从0开始）
-        targets = df['label'].astype(int) - 1
+        targets = df[self.label_type].astype(int) - 1
         
         # 提取特征列，排除非特征字段
         feature_columns = [col for col in df.columns if col not in self.EXCLUDED_FIELDS]
         
         # 检查特征列是否为空
         if not feature_columns:
-            raise ValueError("No feature columns found after excluding non-feature fields")
+            raise ValueError(f"No feature columns found after excluding non-feature fields")
         
         # 提取特征数据
         features_df = df[feature_columns].copy()
@@ -456,3 +457,5 @@ class XGBoostTrainer:
 
 # Global instance
 xgb_trainer = XGBoostTrainer()
+xgb_trainer_high = XGBoostTrainer(config.MODEL_SAVE_PATH_HIGH, 'label_high')
+xgb_trainer_low = XGBoostTrainer(config.MODEL_SAVE_PATH_LOW, 'label_low')

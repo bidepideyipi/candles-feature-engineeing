@@ -137,6 +137,8 @@ class EmailSender:
             prediction_label = prediction_data.get('prediction_label')
             probabilities = prediction_data.get('probabilities', {})
             timestamp = prediction_data.get('timestamp')
+            close_1h_original = prediction_data.get('close_1h_original')
+            volume_1h_original = prediction_data.get('volume_1h_original')
             
             if not prediction or not probabilities:
                 logger.warning("Invalid prediction data")
@@ -151,6 +153,10 @@ class EmailSender:
                 formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S')
             else:
                 formatted_time = "Unknown"
+            
+            # Format original values
+            close_str = f"{close_1h_original:.2f}" if close_1h_original is not None else "N/A"
+            volume_str = f"{volume_1h_original:.2f}" if volume_1h_original is not None else "N/A"
             
             # Create email content (HTML format)
             subject = f"交易提醒: {prediction_label} (置信度: {confidence:.1%})"
@@ -219,6 +225,8 @@ class EmailSender:
                         <p><strong>预测类别:</strong> {prediction}</p>
                         <p><strong>预测标签:</strong> {prediction_label}</p>
                         <p><strong>置信度:</strong> {confidence:.2%}</p>
+                        <p><strong>当前价格:</strong> {close_str} USDT</p>
+                        <p><strong>当前成交量:</strong> {volume_str}</p>
                         <h4>所有类别概率:</h4>
                         <ul>
             """
@@ -228,9 +236,6 @@ class EmailSender:
             
             html_content += f"""
                         </ul>
-                    </div>
-                    <div class="timestamp">
-                        时间: {formatted_time}
                     </div>
                 </div>
             </body>

@@ -95,7 +95,7 @@ class FeatureDataHandler(MongoDBBaseHandler):
             logger.error(f"Failed to retrieve features: {e}")
             return []
     
-    def update_feature_label(self, inst_id: str, timestamp: int, label: int) -> bool:
+    def update_feature_label(self, inst_id: str, timestamp: int, label: int, label_high: int, label_low: int) -> bool:
         """
         Update the label of a feature record.
         
@@ -103,6 +103,7 @@ class FeatureDataHandler(MongoDBBaseHandler):
             inst_id: Instrument ID
             timestamp: Timestamp of the feature
             label: Classification label
+            label_name: Name of the label field to update (default: "label")
             
         Returns:
             bool: True if update successful, False otherwise
@@ -118,13 +119,17 @@ class FeatureDataHandler(MongoDBBaseHandler):
             }
             
             update = {
-                "$set": {"label": label}
+                "$set": {
+                    "label": label,
+                    "label_high": label_high,
+                    "label_low": label_low
+                }
             }
             
             result = collection.update_one(query, update)
             
             if result.modified_count > 0:
-                logger.info(f"Updated label for inst_id: {inst_id}, timestamp: {timestamp}, label: {label}")
+                logger.info(f"Updated label for inst_id: {inst_id}, timestamp: {timestamp}, label: {label}, label_high: {label_high}, label_low: {label_low}")
                 return True
             else:
                 logger.warning(f"No record found or no update needed for inst_id: {inst_id}, timestamp: {timestamp}")
