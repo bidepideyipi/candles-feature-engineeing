@@ -20,6 +20,7 @@ class Config:
     MONGODB_COLLECTIONS = {
         'candlesticks': os.getenv('MONGODB_CANDLESTICKS_COLLECTION', 'candlesticks'),
         'features': os.getenv('MONGODB_FEATURES_COLLECTION', 'features'),
+        'features_prediction': os.getenv('MONGODB_FEATURES_PREDICTION_COLLECTION', 'features_prediction'),
         'normalizer': os.getenv('MONGODB_NORMALIZER_COLLECTION', 'normalizer'),
         'config': os.getenv('MONGODB_CONFIG_COLLECTION', 'config')
     }
@@ -57,16 +58,36 @@ class Config:
         5: (3.6, 100),       # 暴涨    
     }
     
+    CLASSIFICATION_THRESHOLDS_DESC = {   
+        1: "暴跌 (<-3.6%)",     # 暴跌
+        2: "下跌 (-3.6% ~ -1.2%)",     # 下跌
+        3: "横盘 (-1.2% ~ 1.2%)",      # 横盘
+        4: "上涨 (1.2% ~ 3.6%)",       # 上涨
+        5: "暴涨 (>3.6%)",       # 暴涨    
+    }
+    
     CLASSIFICATION_THRESHOLDS_HIGH = {   
         1: (-100, 1.2),      # 没涨
         2: (1.2, 3.6),        # 上涨
         3: (3.6, 100),        # 暴涨
     }
     
+    CLASSIFICATION_THRESHOLDS_HIGH_DESC = {
+        1: "没涨 (<1.2%)",      # 没涨
+        2: "上涨 (1.2% ~ 3.6%)",        # 上涨
+        3: "超涨 (>3.6%)",        # 暴涨
+    }
+    
     CLASSIFICATION_THRESHOLDS_LOW = {   
         1: (-100, -3.6),      # 暴跌
         2: (-3.6, -1.2),      # 下跌
         3: (1.2, 100),       # 没跌
+    }
+    
+    CLASSIFICATION_THRESHOLDS_LOW_DESC = {
+        1: "暴跌 (<-3.6%)",     # 暴跌
+        2: "下跌 (-3.6% ~ -1.2%)",     # 下跌
+        3: "没跌 (<1.2%)",      # 横盘
     }
     
     # Environment Mode

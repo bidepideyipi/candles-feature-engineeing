@@ -381,7 +381,8 @@ class FeatureMerge:
             
             # 基本信息
             "inst_id": self.inst_id,
-            "bar": "1H"
+            "bar": "1H",
+            "timestamp": last_1h.get('timestamp')
         }
         
         return features

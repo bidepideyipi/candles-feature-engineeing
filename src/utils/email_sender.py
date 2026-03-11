@@ -136,15 +136,21 @@ class EmailSender:
             prediction = prediction_data.get('prediction')
             prediction_label = prediction_data.get('prediction_label')
             probabilities = prediction_data.get('probabilities', {})
+            prediction_high = prediction_data.get('prediction_high')
+            prediction_high_label = prediction_data.get('prediction_high_label')
+            probabilities_high = prediction_data.get('probabilities_high', {})
+            prediction_low = prediction_data.get('prediction_low')
+            prediction_low_label = prediction_data.get('prediction_low_label')
+            probabilities_low = prediction_data.get('probabilities_low', {})
             timestamp = prediction_data.get('timestamp')
-            close_1h_original = prediction_data.get('close_1h_original')
-            volume_1h_original = prediction_data.get('volume_1h_original')
             
             if not prediction or not probabilities:
                 logger.warning("Invalid prediction data")
                 return False
             
             confidence = probabilities.get(prediction, 0)
+            confidence_high = probabilities_high.get(prediction_high, 0)
+            confidence_low = probabilities_low.get(prediction_low, 0)
             
             # Format timestamp
             if timestamp:
@@ -154,12 +160,8 @@ class EmailSender:
             else:
                 formatted_time = "Unknown"
             
-            # Format original values
-            close_str = f"{close_1h_original:.2f}" if close_1h_original is not None else "N/A"
-            volume_str = f"{volume_1h_original:.2f}" if volume_1h_original is not None else "N/A"
-            
             # Create email content (HTML format)
-            subject = f"交易提醒: {prediction_label} (置信度: {confidence:.1%})"
+            subject = f"交易提醒: {prediction_label} (置信度: {confidence:.2%})"
             
             html_content = f"""
             <html>
@@ -221,21 +223,20 @@ class EmailSender:
                         置信度: {confidence:.1%}
                     </div>
                     <div class="details">
-                        <h3>预测详情</h3>
-                        <p><strong>预测类别:</strong> {prediction}</p>
-                        <p><strong>预测标签:</strong> {prediction_label}</p>
-                        <p><strong>置信度:</strong> {confidence:.2%}</p>
-                        <p><strong>当前价格:</strong> {close_str} USDT</p>
-                        <p><strong>当前成交量:</strong> {volume_str}</p>
+                        <h3>结果价预测详情</h3>
+                        <p><strong>预测标签:</strong> {prediction} - {prediction_label}</p>
+                        <p><strong>置信度:</strong> {confidence:.1%}</p>
                         <h4>所有类别概率:</h4>
                         <ul>
             """
             
             for class_id, prob in probabilities.items():
-                html_content += f"<li>类别 {class_id}: {prob:.2%}</li>"
+                html_content += f"<li>类别 {class_id}: {prob:.1%}</li>"
             
             html_content += f"""
                         </ul>
+                        <p><strong>最高价:</strong> {prediction_high} - {prediction_high_label} - {confidence_high:.1%}</p>
+                        <p><strong>最低价:</strong> {prediction_low} - {prediction_low_label} - {confidence_low:.1%}</p>
                     </div>
                 </div>
             </body>

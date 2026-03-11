@@ -142,7 +142,10 @@ class OKExDataFetcher:
             except Exception as e:
                 logger.error(f"Unexpected error for {timeframe}: {e}")
                 results[timeframe] = []
-        
+        # TODO
+        # 因为请求是顺序执行的，4个请求的数据会有偏差
+        # 一个方案是让1D、4H、1H index0的close = 15m的close
+        # 另一个思路是计算1D和15m index0的close的差值，把这个瞬间的差值作为计算的特征
         return results
     
     # 拉取历史数据写入mongodb
