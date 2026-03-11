@@ -24,42 +24,6 @@ class PredictionScheduler:
         self.recipient = config.SCHEDULE_RECIPIENT
         self.from_local = False
     
-    # def check_prediction_confidence(self, prediction_data: Dict[str, Any], threshold: float = 0.6) -> bool:
-    #     """
-    #     Check if prediction confidence meets threshold.
-        
-    #     Args:
-    #         prediction_data: Prediction data from predict_price_movement()
-    #         threshold: Confidence threshold (default: 0.6 = 60%)
-            
-    #     Returns:
-    #         bool: True if confidence meets threshold
-    #     """
-    #     try:
-    #         prediction = prediction_data.get('prediction')
-    #         probabilities = prediction_data.get('probabilities', {})
-            
-    #         if not prediction or not probabilities:
-    #             logger.warning("Invalid prediction data")
-    #             return False
-            
-    #         if prediction == 3:
-    #             logger.info("Prediction is 3 (横盘-1.2% ~ 1.2%), confidence check skipped")
-    #             return False
-            
-    #         confidence = probabilities.get(prediction, 0)
-    #         logger.info(f"Prediction: {prediction}, Confidence: {confidence:.2%}, Threshold: {threshold:.0%}")
-            
-    #         if confidence < threshold:
-    #             logger.info(f"Confidence {confidence:.2%} below threshold {threshold:.0%}, alert skipped")
-    #             return False
-            
-    #         return True
-            
-    #     except Exception as e:
-    #         logger.error(f"Error checking confidence: {e}", exc_info=True)
-    #         return False
-    
     def predict_price_movement(self) -> Dict[str, Any]:
         """
         Predict price movement and return prediction data.
@@ -171,10 +135,14 @@ class PredictionScheduler:
                     logger.info(f"Prediction completed:")
                     logger.info(f"  Prediction: {prediction_data.get('prediction_label')}")
                     logger.info(f"  Probabilities: {prediction_data.get('probabilities')}")
+                    logger.info(f"  Prediction-High: {prediction_data.get('prediction_high_label')}")
+                    logger.info(f"  Probabilities-High: {prediction_data.get('probabilities_high')}")
+                    logger.info(f"  Prediction-Low: {prediction_data.get('prediction_low_label')}")
+                    logger.info(f"  Probabilities-Low: {prediction_data.get('probabilities_low')}")
                     
                     # Check confidence and send email alert
                     try:
-                        if prediction_data.get('probabilities_high').get(prediction_data.get('prediction_high')) >= 0.75 or prediction_data.get('probabilities_low').get(prediction_data.get('prediction_low')) >= 0.75:
+                        if prediction_data.get('probabilities_high').get(prediction_data.get('prediction_high')) >= 0.8 or prediction_data.get('probabilities_low').get(prediction_data.get('prediction_low')) >= 0.8:
                             logger.info("Confidence meets threshold, sending email alert...")
                             email_sender.send_trading_alert(
                                 to_email=self.recipient,
