@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.api_fetch_okex import router as fetch_router
 from api.api_config import router as config_router
+from api.api_technical_indicators import router as technical_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -22,6 +23,7 @@ app.add_middleware(
 # Include routers
 app.include_router(fetch_router)
 app.include_router(config_router)
+app.include_router(technical_router)
 
 # Root endpoint
 @app.get("/")
