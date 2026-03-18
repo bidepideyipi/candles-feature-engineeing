@@ -6,12 +6,13 @@ import time
 from datetime import datetime
 from typing import Dict, Any
 
-from models.xgboost_trainer import xgb_trainer,xgb_trainer_high,xgb_trainer_low
+from models.xgboost_trainer import xgb_trainer, xgb_trainer_high, xgb_trainer_low
 from feature.feature_merge import FeatureMerge
 from utils.email_sender import email_sender
 from collect.config_handler import config_handler
 from config.settings import config
 from collect.feature_prediction_handler import feature_pr_handler
+from stream.redis_stream_handler import redis_stream_handler
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,9 @@ class PredictionScheduler:
                 label=prediction_result.get("prediction"),
                 label_high=prediction_result.get("prediction_high"),
                 label_low=prediction_result.get("prediction_low")
-            );
+            )
+            
+            redis_stream_handler.publish_prediction(prediction_result)
             
             return prediction_result
             

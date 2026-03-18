@@ -12,6 +12,12 @@ load_dotenv()
 class Config:
     """Configuration class containing all project settings."""
     
+    # Redis Configuration
+    REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+    REDIS_DB = int(os.getenv('REDIS_DB', '1'))
+    REDIS_SIGNAL_STREAM = os.getenv('REDIS_SIGNAL_STREAM', 'signals')
+    
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
     MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'technical_analysis')
