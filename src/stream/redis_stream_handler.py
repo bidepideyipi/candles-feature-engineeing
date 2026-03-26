@@ -62,7 +62,9 @@ class RedisStreamHandler:
                 "probabilities": json.dumps(prediction_data.get("probabilities", {})),
                 "probabilities_high": json.dumps(prediction_data.get("probabilities_high", {})),
                 "probabilities_low": json.dumps(prediction_data.get("probabilities_low", {})),
-                "features_count": prediction_data.get("features_count", 0)
+                "features_count": prediction_data.get("features_count", 0),
+                "price": prediction_data.get("price")
+                
             }
             
             message_id = self.redis_client.xadd(self.stream_name, message)

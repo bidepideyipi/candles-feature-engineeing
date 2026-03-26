@@ -26,7 +26,7 @@ class XGBoostTrainer:
     """Trains and manages XGBoost classification models."""
     
     # 非特征字段列表（需要从训练数据中排除）
-    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label', 'label_high', 'label_low', 'price_change_pct'}
+    EXCLUDED_FIELDS = {'_id', 'inst_id', 'bar', 'timestamp', 'label', 'label_high', 'label_low', 'price_change_pct', 'price'}
     
     def __init__(self, model_save_path: str = config.MODEL_SAVE_PATH, label_type: str = 'label'):
         """Initialize the trainer."""

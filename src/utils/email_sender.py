@@ -142,6 +142,7 @@ class EmailSender:
             prediction_low = prediction_data.get('prediction_low')
             prediction_low_label = prediction_data.get('prediction_low_label')
             probabilities_low = prediction_data.get('probabilities_low', {})
+            price = prediction_data.get("price")
             timestamp = prediction_data.get('timestamp')
             
             if not prediction or not probabilities:
@@ -220,7 +221,7 @@ class EmailSender:
                         {prediction_label}
                     </div>
                     <div class="confidence">
-                        置信度: {confidence:.1%}
+                        置信度: {confidence:.1%}, 价格: {price:.2f}
                     </div>
                     <div class="details">
                         <h3>结果价预测详情</h3>

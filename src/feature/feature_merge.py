@@ -322,6 +322,8 @@ class FeatureMerge:
             "macd_line_1h": feature1h_result.get("macd_line_1h"),
             "macd_signal_1h": feature1h_result.get("macd_signal_1h"),
             "macd_histogram_1h": feature1h_result.get("macd_histogram_1h"),
+            "price": feature1h_result.get("price"),
+            
             
             # 时间编码特征
             "hour_cos": feature1h_result.get("hour_cos"),

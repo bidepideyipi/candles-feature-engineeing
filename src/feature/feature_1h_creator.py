@@ -92,5 +92,6 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "lower_shadow_ratio_1h": round(pinbar_features['lower_shadow_ratio'], 2),
             "shadow_imbalance_1h": round(pinbar_features['shadow_imbalance'], 2),
             "body_ratio_1h": round(pinbar_features['body_ratio'], 2),
+            "price": close1h.iloc[-1],
           }
     
