@@ -5,7 +5,11 @@ mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.features_predi
 
 mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection normalizer --type csv --headerline --file normalizer.csv
 
+mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection config --type csv --headerline --file config.csv
+
 mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.normalizer.find().limit(10).forEach(printjson)"
+
+mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.config.find().limit(10).forEach(printjson)"
 
 mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.features_prediction.find().limit(10).forEach(printjson)"
 

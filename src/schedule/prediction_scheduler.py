@@ -148,7 +148,8 @@ class PredictionScheduler:
                     probalility = prediction_data.get('probabilities').get(prediction);
                     # Check confidence and send email alert
                     try:
-                        if ((prediction == 5 or prediction == 1) and probalility > 0.6) or (prediction_data.get('probabilities_high').get(prediction_data.get('prediction_high')) >= 0.8 or prediction_data.get('probabilities_low').get(prediction_data.get('prediction_low')) >= 0.8):
+                        # if ((prediction == 5 or prediction == 1) and probalility > 0.8) or (prediction_data.get('probabilities_high').get(prediction_data.get('prediction_high')) >= 0.8 or prediction_data.get('probabilities_low').get(prediction_data.get('prediction_low')) >= 0.8):
+                        if (probabilility >= 0.7):
                             logger.info("Confidence meets threshold, sending email alert...")
                             email_sender.send_trading_alert(
                                 to_email=self.recipient,
