@@ -16,6 +16,7 @@ from stream.redis_stream_handler import redis_stream_handler
 
 logger = logging.getLogger(__name__)
 
+PREDICTION = 0
 
 class PredictionScheduler:
     """Scheduled prediction task manager."""
@@ -150,13 +151,15 @@ class PredictionScheduler:
                     try:
                         # if ((prediction == 5 or prediction == 1) and probalility > 0.8) or (prediction_data.get('probabilities_high').get(prediction_data.get('prediction_high')) >= 0.8 or prediction_data.get('probabilities_low').get(prediction_data.get('prediction_low')) >= 0.8):
                         if (probalility >= 0.7):
-                            logger.info("Confidence meets threshold, sending email alert...")
-                            email_sender.send_trading_alert(
-                                to_email=self.recipient,
-                                prediction_data=prediction_data
-                            )
-                        else:
-                            logger.info("Confidence below threshold, no email sent")
+                            if prediction != PREDICTION:
+                                PREDICTION = prediction
+                                logger.info("Confidence meets threshold, sending email alert...")
+                                email_sender.send_trading_alert(
+                                    to_email=self.recipient,
+                                    prediction_data=prediction_data
+                                )
+                        # else:
+                        #     logger.info("Confidence below threshold, no email sent")
                     except Exception as e:
                         logger.error(f"Error in confidence check or email sending: {e}", exc_info=True)
                 else:
