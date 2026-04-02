@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 class FeatureMerge:
     
-    def __init__(self, batch_size: int = 500):
+    def __init__(self, batch_size: int = 1000):
         self.inst_id = "ETH-USDT-SWAP"
         self.batch_size = batch_size
         self._batch_cache: List[Feature] = []
@@ -28,20 +28,21 @@ class FeatureMerge:
         """
         last_timestamp = before
         n = 0
-        while last_timestamp is not None and n < limit:
-            try:
-                result = self._process_and_cache(before=last_timestamp)
-                if result is not None:
-                    last_timestamp = result
-                    n += 1
-                else:
+        try:
+            while last_timestamp is not None and n < limit:
+                try:
+                    result = self._process_and_cache(before=last_timestamp)
+                    if result is not None:
+                        last_timestamp = result
+                        n += 1
+                    else:
+                        break
+                except Exception as e:
+                    log.error(f"处理特征时发生错误: {e}", exc_info=True)
                     break
-            except Exception as e:
-                log.error(f"处理特征时发生错误: {e}", exc_info=True)
-                break
-        
-        if self._batch_cache:
-            self._flush_batch()
+        finally:
+            if self._batch_cache:
+                self._flush_batch()
         
         return True
 
