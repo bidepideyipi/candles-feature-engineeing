@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 
 from utils.rsi_calculator import RSI_CALCULATOR
 from utils.atr_calculator import ATR_CALCULATOR
+from utils.macd_calculator import MACD_CALCULATOR
 from utils.calculator_interface import BaseTechnicalCalculator
 from utils.bollinger_bands_calculator import BOLLINGER_BANDS_20
 from utils.pinbar_calculator import PINBAR_CALCULATOR
@@ -21,6 +22,7 @@ class Feature1DCreator(BaseTechnicalCalculator):
         self.atr_calculator = ATR_CALCULATOR
         self.bollinger_calculator = BOLLINGER_BANDS_20
         self.pinbar_calculator = PINBAR_CALCULATOR
+        self.macd_calculator = MACD_CALCULATOR
         self.close_mean = close_mean
         self.close_std = close_std
         
@@ -38,6 +40,11 @@ class Feature1DCreator(BaseTechnicalCalculator):
             bollinger_lower_1d  # 布林带下轨
             bollinger_position_1d  # 布林带位置（价格在带内的相对位置）
             
+            -- 20260401增加 begin ---
+            "macd_line_1d": Number,           // MACD快线
+            "macd_signal_1d": Number,         // MACD信号线
+            -- 20260401增加 end ---
+            
         """
         close1D = pd.Series(item['close'] for item in candles1D)
         high1D = pd.Series(item['high'] for item in candles1D)
@@ -51,6 +58,11 @@ class Feature1DCreator(BaseTechnicalCalculator):
         bollinger_upper_1d, bollinger_lower_1d, bollinger_position_1d = self.bollinger_calculator.calculate(close1D)
         bollinger_upper_1d = round((bollinger_upper_1d - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
         bollinger_lower_1d = round((bollinger_lower_1d - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
+        
+        macd_line_1d, macd_signal_1d, macd_histogram_1d = self.macd_calculator.calculate(close1D)
+        macd_line_1d = round(macd_line_1d, 0)  # MACD保留0位小数
+        macd_signal_1d = round(macd_signal_1d, 0)  # MACD信号线保留0位小数
+        macd_histogram_1d = round(macd_histogram_1d, 3)  # MACD直方图保留3位小数   
         
         pinbar_features = self.pinbar_calculator.calculate(
             high_prices=df['high'],
@@ -69,5 +81,7 @@ class Feature1DCreator(BaseTechnicalCalculator):
             "lower_shadow_ratio_1d": round(pinbar_features['lower_shadow_ratio'], 2),
             "shadow_imbalance_1d": round(pinbar_features['shadow_imbalance'], 2),
             "body_ratio_1d": round(pinbar_features['body_ratio'], 2),
+            "macd_line_1d": macd_line_1d,
+            "macd_signal_1d": macd_signal_1d,
         }
     

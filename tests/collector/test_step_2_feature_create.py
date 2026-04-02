@@ -54,11 +54,14 @@ class TestFeatureCreate:
         assert True
     
     def test_4h_feature_create(self):
+        
+        is_close_saved = normalization_handler.get_normalization_params(inst_id = 'ETH-USDT-SWAP', bar = '1H', column = 'close')
         candles = candlestick_handler.get_candlestick_data(inst_id = 'ETH-USDT-SWAP', bar = '4H', limit = 48)
         
         close = pd.Series(item['close'] for item in candles)
         assert close is not None
-        creator = Feature4HCreator();
+        creator = Feature4HCreator(close_mean = is_close_saved['mean'], 
+                                    close_std = is_close_saved['std']);
         resultDict = creator.calculate(candles) 
         assert True
         

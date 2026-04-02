@@ -7,6 +7,10 @@ from utils.rsi_calculator import RSI_CALCULATOR
 from utils.macd_calculator import MACD_CALCULATOR
 from utils.pinbar_calculator import PINBAR_CALCULATOR
 from utils.calculator_interface import BaseTechnicalCalculator
+from utils.trend_continuation_calulator import TREND_CONTINUATION_CALCULATOR
+from utils.atr_calculator import ATR_CALCULATOR
+from utils.adx_calculator import ADX_CALCULATOR
+from utils.ema_calculator import EMA_12, EMA_26, EMA_48, EMACrossoverSignal
 
 class Feature1HCreator(BaseTechnicalCalculator):
 
@@ -23,6 +27,12 @@ class Feature1HCreator(BaseTechnicalCalculator):
         self.close_std = close_std
         self.vol_mean = vol_mean
         self.vol_std = vol_std
+        self.trend_calculator = TREND_CONTINUATION_CALCULATOR
+        self.atr_calculator = ATR_CALCULATOR
+        self.adx_calculator = ADX_CALCULATOR
+        self.ema_12 = EMA_12
+        self.ema_26 = EMA_26
+        self.ema_48 = EMA_48
         
         
     def calculate(self, candles1h: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -43,6 +53,17 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "hour_sin": Number,               // 小时正弦编码
             "day_of_week": Number,            // 星期几
             
+            -- 20260401增加 begin ---
+            "trend_continuation_1h": Number   // 1小时趋势延续强度
+            "atr_1h": Number,                 // 1小时波动率（新增）
+            "adx_1h": Number,                 // 1小时趋势强度（新增）
+            "ema_12_1h": Number,             // 1小时12日均线（新增）
+            "ema_26_1h": Number,             // 1小时26日均线（新增）
+            "ema_48_1h": Number              // 1小时48日均线（新增）
+            "ema_cross_1h_12_26": Number           // EMA交叉信号（12 vs 26, 26 vs 48）
+            "ema_cross_1h_26_48": Number           // EMA交叉信号（26 vs 48）
+            -- 20260401增加 end ---
+            
         """
         close1h = pd.Series(item['close'] for item in candles1h)
         volume1h = pd.Series(item['volume'] for item in candles1h)
@@ -55,6 +76,30 @@ class Feature1HCreator(BaseTechnicalCalculator):
         macd_line_1h = round(macd_line_1h, 0)  # MACD保留0位小数
         macd_signal_1h = round(macd_signal_1h, 0)  # MACD信号线保留0位小数
         macd_histogram_1h = round(macd_histogram_1h, 3)  # MACD直方图保留3位小数    
+        
+        # 建议1小时趋势延续强度的时间窗口为20~30，这里仍然保留48和MACD慢线时间一致同时看中稳健性
+        trend_continuation_1h = round(self.trend_calculator.calculate(close1h), 2)  # 趋势延续强度保留2位小数
+        high1h = pd.Series(item['high'] for item in candles1h)
+        low1h = pd.Series(item['low'] for item in candles1h)
+        open1h = pd.Series(item['open'] for item in candles1h)
+        df = pd.DataFrame({'high': high1h, 'low': low1h, 'open': open1h, 'close': close1h})
+        
+        atr_1h = round(self.atr_calculator.calculate(df), 0)  # 1小时波动率保留3位小数
+        
+        adx_value, plus_di, minus_di = self.adx_calculator.calculate(df)
+        adx_1h = round(adx_value, 1)  # 1小时趋势强度保留1位小数
+        plus_di_1h = round(plus_di, 1)  # 1小时上涨方向指标保留1位小数
+        minus_di_1h = round(minus_di, 1)  # 1小时下跌方向指标保留1位小数   
+        
+        ema_12_1h = self.ema_12.calculate(close1h)  # 1小时12日均线
+        ema_26_1h = self.ema_26.calculate(close1h)  # 1小时26日均线
+        ema_48_1h = self.ema_48.calculate(close1h)  # 1小时48日均线
+        ema_12_1h = round((ema_12_1h - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
+        ema_26_1h = round((ema_26_1h - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
+        ema_48_1h = round((ema_48_1h - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
+        
+        ema_cross_1h_12_26 = EMACrossoverSignal.calculate_from_values(ema_12_1h, ema_26_1h)
+        ema_cross_1h_26_48 = EMACrossoverSignal.calculate_from_values(ema_26_1h, ema_48_1h)  
         
         # 直接在当前方法中实现时间编码转换
         # 获取最后一个记录的小时和星期几
@@ -93,5 +138,14 @@ class Feature1HCreator(BaseTechnicalCalculator):
             "shadow_imbalance_1h": round(pinbar_features['shadow_imbalance'], 2),
             "body_ratio_1h": round(pinbar_features['body_ratio'], 2),
             "price": close1h.iloc[-1],
+            "atr_1h": atr_1h,
+            "adx_1h": adx_1h,
+            "plus_di_1h": plus_di_1h,
+            "minus_di_1h": minus_di_1h,
+            "ema_12_1h": ema_12_1h,
+            "ema_26_1h": ema_26_1h,
+            "ema_48_1h": ema_48_1h,
+            "ema_cross_1h_12_26": ema_cross_1h_12_26,
+            "ema_cross_1h_26_48": ema_cross_1h_26_48,
           }
     

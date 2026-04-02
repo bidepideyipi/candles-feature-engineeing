@@ -44,8 +44,8 @@ def fetch_okex_data(
     
     系统的第一步是从OKEx拉取数据，这是第一个要请求的接口。
     由于拉取数据是一个耗时的操作，而且是历史数据，所以还主要用于训练数据的采集。
-    拉取的数据如4H是600条，那么1H就是600*4=2400条。15m就是600*4*4=9600条。
-    
+    拉取的数据如4H是600条，那么1H就是600乘以4=2400条。15m就是600乘以16=9600条。
+    执行完毕后 db.candlesticks.countDocuments({ bar: '1H' })可以查看拉取的数据数量，作为下一步的决策数值。
     Args:
         inst_id: Instrument ID (e.g., ETH-USDT-SWAP)
         bar: Time interval (e.g., "15m", "1H", "4H", "1D")
@@ -85,17 +85,18 @@ def fetch_okex_data(
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 @router.get("/2-normalize")
-def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 5000):
+def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 20000):
     """
     归一化数据
     
     系统的第二步是对数据进行归一化，这是第二个要请求的接口。
-    归一化的目的是将数据转换为0到1之间的范围，这在很多机器学习算法中都是必要的。
+    归一化的目的是将数据转换为-5到5之间的范围，这在很多机器学习算法中都是必要的。
+    执行完毕后 db.features.deleteMany({}) 以删除features集合。归一化的数据发生变化后，所有特征需要重新计算。
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
     
-    candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = bar, limit = limit)
+    candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = bar, limit = limit, sort_desc = True)
         
     close = pd.Series(item['close'] for item in candles)
     volume = pd.Series(item['volume'] for item in candles)
@@ -121,6 +122,7 @@ def merge_feature(limit: int = 5000, before: int = None):
     
     系统的第三步是合并特征，这是第三个要请求的接口。
     合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
+    按1H数据时间倒序取第25条的时间戳为before的值。因为后续生成标签数据的时候需要倒推24小时。
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")

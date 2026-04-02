@@ -29,9 +29,13 @@ class Normalized(BaseTechnicalCalculator):
         prices_series = self._convert_to_series(close_prices)
         
         # Calculate rolling statistics
-        window = len(prices_series)
-        rolling_mean = prices_series.rolling(window=window, min_periods=1).mean()
-        rolling_std = prices_series.rolling(window=window, min_periods=1).std()
+        # window = len(prices_series)
+        # rolling_mean = prices_series.rolling(window=window, min_periods=1).mean()
+        # rolling_std = prices_series.rolling(window=window, min_periods=1).std()
+        
+        # 优化性能，直接计算整体均值和标准差，而不是滚动窗口
+        rolling_mean = prices_series.mean()
+        rolling_std = prices_series.std()
         
         # Normalize prices
         normalized = (prices_series - rolling_mean) / rolling_std
