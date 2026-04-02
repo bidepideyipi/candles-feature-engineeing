@@ -4,11 +4,12 @@ Handles feature data storage and retrieval.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 from config.settings import config
 from .mongodb_base import MongoDBBaseHandler
+from feature.feature_types import Feature
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,13 @@ class FeatureDataPredictionHandler(MongoDBBaseHandler):
             (('inst_id', 'timestamp', 'bar'), True)
         ])
     
-    def save_feature(self, feature_data: Dict[str, Any], ts: int = None) -> bool:
+    def save_feature(self, feature_data: Union[Dict[str, Any], Feature], ts: int = None) -> bool:
         """
         Save calculated feature to MongoDB features collection.
         
         Args:
-            feature_data: Feature dictionary
+            feature_data: Feature dictionary or Feature object
+            ts: Timestamp to set (optional)
             
         Returns:
             bool: True if save successful, False otherwise
@@ -44,8 +46,15 @@ class FeatureDataPredictionHandler(MongoDBBaseHandler):
             if collection is None:
                 return False
             
-            feature_data["timestamp"] = ts
-            result = collection.insert_one(feature_data)
+            if isinstance(feature_data, Feature):
+                data_to_save = feature_data.to_dict()
+            else:
+                data_to_save = feature_data.copy()
+            
+            if ts is not None:
+                data_to_save["timestamp"] = ts
+            
+            result = collection.insert_one(data_to_save)
             logger.info(f"Saved feature record with id: {result.inserted_id}")
             return True
             

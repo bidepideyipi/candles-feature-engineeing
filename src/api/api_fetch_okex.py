@@ -60,8 +60,8 @@ def fetch_okex_data(
     
     try:
         # Validate parameters
-        if max_records < 600 or max_records > 60000:
-            raise HTTPException(status_code=400, detail="max_records must be between 600 and 60000")
+        if max_records < 1 or max_records > 10000:
+            raise HTTPException(status_code=400, detail="max_records must be between 1 and 10000")
         
         if bar not in ["15m", "1H", "4H", "1D"]:
             raise HTTPException(status_code=400, detail="Invalid bar parameter")

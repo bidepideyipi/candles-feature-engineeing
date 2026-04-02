@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from models.xgboost_trainer import xgb_trainer, xgb_trainer_high, xgb_trainer_low
 from feature.feature_merge import FeatureMerge
+from feature.feature_types import Feature
 from utils.email_sender import email_sender
 from collect.config_handler import config_handler
 from config.settings import config
@@ -56,11 +57,8 @@ class PredictionScheduler:
                 logger.error("Failed to extract features")
                 return None
             
-            # 保存特征数据到MongoDB
             current_ts = int(datetime.now().timestamp() * 1000)
             feature_pr_handler.save_feature(features, current_ts)
-            
-            # 进行预测
             
             prediction, probabilities = xgb_trainer.predict_single(features)
             class_labels = config.CLASSIFICATION_THRESHOLDS_DESC
@@ -84,7 +82,7 @@ class PredictionScheduler:
                 prob_dict_low[class_num] = round(float(prob), 4)
             
             prediction_result = {
-                "timestamp": features.get("timestamp"),
+                "timestamp": features.timestamp,
                 "prediction": int(prediction),
                 "prediction_label": class_labels.get(prediction, f"类别 {prediction}"),
                 "prediction_high": int(prediction_high),
@@ -96,7 +94,7 @@ class PredictionScheduler:
                 "probabilities_low": prob_dict_low,
                 "features_count": len(xgb_trainer.feature_columns),
                 "inst_id": "ETH-USDT-SWAP",
-                "price" : features.get("price"),
+                "price": features.price,
                 "bar": "1H"
             }
             

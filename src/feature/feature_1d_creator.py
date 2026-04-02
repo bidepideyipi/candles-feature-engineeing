@@ -9,6 +9,7 @@ from utils.macd_calculator import MACD_CALCULATOR
 from utils.calculator_interface import BaseTechnicalCalculator
 from utils.bollinger_bands_calculator import BOLLINGER_BANDS_20
 from utils.pinbar_calculator import PINBAR_CALCULATOR
+from feature.feature_types import Feature1D
 
 class Feature1DCreator(BaseTechnicalCalculator):
 
@@ -26,25 +27,13 @@ class Feature1DCreator(BaseTechnicalCalculator):
         self.close_mean = close_mean
         self.close_std = close_std
         
-    def calculate(self, candles1D: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def calculate(self, candles1D: List[Dict[str, Any]]) -> Feature1D:
         """
             处理一天的特征参数
         Args:
             candles1D (List[Dict[str, Any]]): 1天数据（因为atr需要1天的时间窗口）
             Returns:
-            Dict[str, Any]:
-            
-            rsi_14_1d       # 日线动量
-            atr_1d          # 日线波动率
-            bollinger_upper_1d  # 布林带上轨
-            bollinger_lower_1d  # 布林带下轨
-            bollinger_position_1d  # 布林带位置（价格在带内的相对位置）
-            
-            -- 20260401增加 begin ---
-            "macd_line_1d": Number,           // MACD快线
-            "macd_signal_1d": Number,         // MACD信号线
-            -- 20260401增加 end ---
-            
+            Feature1D: 1天特征对象
         """
         close1D = pd.Series(item['close'] for item in candles1D)
         high1D = pd.Series(item['high'] for item in candles1D)
@@ -52,17 +41,16 @@ class Feature1DCreator(BaseTechnicalCalculator):
         open1D = pd.Series(item['open'] for item in candles1D)
         df = pd.DataFrame({'high': high1D, 'low': low1D, 'open': open1D, 'close': close1D})
         
-        rsi_14_1d = round(self.rsi_calculator.calculate(close1D), 0)  # RSI保留0位小数
-        atr_1d = round(self.atr_calculator.calculate(df), 0)  # ATR保留0位小数
+        rsi_14_1d = int(round(self.rsi_calculator.calculate(close1D), 0))
+        atr_1d = round(self.atr_calculator.calculate(df), 0)
         
         bollinger_upper_1d, bollinger_lower_1d, bollinger_position_1d = self.bollinger_calculator.calculate(close1D)
-        bollinger_upper_1d = round((bollinger_upper_1d - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
-        bollinger_lower_1d = round((bollinger_lower_1d - self.close_mean) / self.close_std, 3)  # 价格标准化保留3位小数
+        bollinger_upper_1d = round((bollinger_upper_1d - self.close_mean) / self.close_std, 3)
+        bollinger_lower_1d = round((bollinger_lower_1d - self.close_mean) / self.close_std, 3)
         
         macd_line_1d, macd_signal_1d, macd_histogram_1d = self.macd_calculator.calculate(close1D)
-        macd_line_1d = round(macd_line_1d, 0)  # MACD保留0位小数
-        macd_signal_1d = round(macd_signal_1d, 0)  # MACD信号线保留0位小数
-        macd_histogram_1d = round(macd_histogram_1d, 3)  # MACD直方图保留3位小数   
+        macd_line_1d = round(macd_line_1d, 0)
+        macd_signal_1d = round(macd_signal_1d, 0)
         
         pinbar_features = self.pinbar_calculator.calculate(
             high_prices=df['high'],
@@ -71,17 +59,17 @@ class Feature1DCreator(BaseTechnicalCalculator):
             close_prices=df['close']
         )
         
-        return {
-            "rsi_14_1d": rsi_14_1d,
-            "atr_1d": atr_1d,
-            "bollinger_upper_1d": bollinger_upper_1d,
-            "bollinger_lower_1d": bollinger_lower_1d,
-            "bollinger_position_1d": round(bollinger_position_1d, 2),  # 位置标准化保留2位小数
-            "upper_shadow_ratio_1d": round(pinbar_features['upper_shadow_ratio'], 2),
-            "lower_shadow_ratio_1d": round(pinbar_features['lower_shadow_ratio'], 2),
-            "shadow_imbalance_1d": round(pinbar_features['shadow_imbalance'], 2),
-            "body_ratio_1d": round(pinbar_features['body_ratio'], 2),
-            "macd_line_1d": macd_line_1d,
-            "macd_signal_1d": macd_signal_1d,
-        }
+        return Feature1D(
+            rsi_14_1d=rsi_14_1d,
+            atr_1d=atr_1d,
+            bollinger_upper_1d=bollinger_upper_1d,
+            bollinger_lower_1d=bollinger_lower_1d,
+            bollinger_position_1d=round(bollinger_position_1d, 2),
+            upper_shadow_ratio_1d=round(pinbar_features['upper_shadow_ratio'], 2),
+            lower_shadow_ratio_1d=round(pinbar_features['lower_shadow_ratio'], 2),
+            shadow_imbalance_1d=round(pinbar_features['shadow_imbalance'], 2),
+            body_ratio_1d=round(pinbar_features['body_ratio'], 2),
+            macd_line_1d=macd_line_1d,
+            macd_signal_1d=macd_signal_1d,
+        )
     

@@ -8,7 +8,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, Any, Optional, List
+from typing import Tuple, Dict, Any, Optional, List, Union
 from datetime import datetime
 
 import xgboost as xgb
@@ -19,6 +19,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from config.settings import config
 from collect.feature_handler import feature_handler
+from feature.feature_types import Feature
 
 logger = logging.getLogger(__name__)
 
@@ -334,12 +335,12 @@ class XGBoostTrainer:
         
         return results
     
-    def predict(self, features_input: pd.DataFrame or List[Dict[str, Any]]) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, features_input: Union[pd.DataFrame, List[Dict[str, Any]], List[Feature]]) -> Tuple[np.ndarray, np.ndarray]:
         """
         Make predictions on new data.
         
         Args:
-            features_input: DataFrame with features or List of feature dictionaries from MongoDB
+            features_input: DataFrame with features, List of feature dictionaries, or List of Feature objects
             
         Returns:
             Tuple of (predicted classes, prediction probabilities)
@@ -350,45 +351,48 @@ class XGBoostTrainer:
         if self.feature_columns is None:
             raise ValueError("Feature columns not defined")
         
-        # 如果输入是字典列表，转换为 DataFrame
         if isinstance(features_input, list):
-            features_df = pd.DataFrame(features_input)
-            # 提取特征列，排除非特征字段
+            features_list = []
+            for item in features_input:
+                if isinstance(item, Feature):
+                    features_list.append(item.to_dict())
+                else:
+                    features_list.append(item)
+            features_df = pd.DataFrame(features_list)
             features_df = features_df[[col for col in features_df.columns if col not in self.EXCLUDED_FIELDS]]
         else:
             features_df = features_input.copy()
         
-        # Ensure features are in the same order as training
         features_df = features_df[self.feature_columns]
         
-        # Handle missing values
         features_df = features_df.fillna(features_df.mean())
         
-        # Scale features
         features_scaled = self.scaler.transform(features_df)
         
-        # Convert to DMatrix
         dmatrix = xgb.DMatrix(features_scaled)
         
-        # Predict
         probabilities = self.model.predict(dmatrix)
         predictions = np.argmax(probabilities, axis=1)
         
-        # Convert back to original class labels (1-7)
         predictions = predictions + 1
         
         return predictions, probabilities
     
-    def predict_single(self, feature_dict: Dict[str, Any]) -> Tuple[int, np.ndarray]:
+    def predict_single(self, feature_input: Union[Dict[str, Any], Feature]) -> Tuple[int, np.ndarray]:
         """
-        Make prediction on a single feature dictionary.
+        Make prediction on a single feature dictionary or Feature object.
         
         Args:
-            feature_dict: Single feature dictionary from MongoDB
+            feature_input: Single feature dictionary or Feature object
             
         Returns:
             Tuple of (predicted class, prediction probabilities)
         """
+        if isinstance(feature_input, Feature):
+            feature_dict = feature_input.to_dict()
+        else:
+            feature_dict = feature_input
+        
         predictions, probabilities = self.predict([feature_dict])
         return predictions[0], probabilities[0]
     
