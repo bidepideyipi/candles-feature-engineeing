@@ -24,3 +24,13 @@ db.candlesticks.countDocuments({ bar: '1H' })
 ```shell
 db.features.deleteMany({})
 ```
+确认features label 数量
+```shell
+db.features.countDocuments({
+    $and: [
+        { label: { $exists: true } },
+        { label: { $ne: "" } },
+        { label: { $ne: null } }
+    ]
+})
+```
