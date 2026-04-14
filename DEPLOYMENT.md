@@ -43,8 +43,9 @@ models/xgboost_model_features.json
 同步mongodb的config、normalizer表到服务器, 保持配置一致
 从本地导出csv文件，import到服务器
 ```bash
+mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.normalizer.deleteMany({})"
 mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection normalizer --type csv --headerline --file normalizer.csv
-
+mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.config.deleteMany({})"
 mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection config --type csv --headerline --file config.csv
 ```
 
@@ -59,6 +60,11 @@ docker-compose logs -f api
 
 # 停止服务
 docker-compose down
+
+# 生产上使用
+docker compose -f docker-compose.centos.yml up -d --build
+docker-compose -f docker-compose.centos.yml logs --tail 200 -f api
+docker compose -f docker-compose.centos.yml down
 ```
 
 #### 4. 验证部署

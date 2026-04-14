@@ -228,3 +228,5 @@ raw_data/
 processed_data/
 mongodb_data/
 redis_data/
+scripts/config.csv
+scripts/normalizer.csv
