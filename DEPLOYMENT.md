@@ -47,6 +47,8 @@ mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.normalizer.del
 mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection normalizer --type csv --headerline --file normalizer.csv
 mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.config.deleteMany({})"
 mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection config --type csv --headerline --file config.csv
+# 更新config表中的value字段为字符串类型
+mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval 'db.config.updateMany({ value: { $exists: true } }, [{ $set: { value: { $toString: "$value" } } }])'
 ```
 
 #### 3. 启动服务
