@@ -40,6 +40,13 @@ models/xgboost_model.json
 models/xgboost_model_scaler.pkl
 models/xgboost_model_features.json
 ```
+同步mongodb的config、normalizer表到服务器, 保持配置一致
+从本地导出csv文件，import到服务器
+```bash
+mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection normalizer --type csv --headerline --file normalizer.csv
+
+mongoimport --uri "mongodb://127.0.0.1:27017/technical_analysis" --collection config --type csv --headerline --file config.csv
+```
 
 #### 3. 启动服务
 
