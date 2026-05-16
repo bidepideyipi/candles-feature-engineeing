@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from api.api_base import app
 from schedule.prediction_scheduler import prediction_scheduler
 from config.settings import config
+from stream.redis_list_handler import redis_list_handler
 
 # Create logger
 logger = logging.getLogger(__name__)
@@ -61,6 +62,11 @@ def main():
         schedule_thread = threading.Thread(target=prediction_scheduler.run, daemon=False)
         schedule_thread.start()
         logger.info("Scheduled prediction task started in background thread")
+    
+    # Start Redis list processing in background thread
+    redis_thread = threading.Thread(target=redis_list_handler.start_continuous_processing, daemon=False)
+    redis_thread.start()
+    logger.info("Redis list processing started in background thread")
     
     try:
         # Start FastAPI server
