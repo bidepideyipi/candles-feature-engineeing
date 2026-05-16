@@ -46,3 +46,32 @@ db.features.countDocuments({
     ]
 })
 ```
+# 2026-05-16 增加配置
+```shell
+mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.config.insertMany([
+  {
+    item: 'feishu',
+    key: 'app_id',
+    desc: '飞书的app_id',
+    value: '******'
+  },
+  {
+    item: 'feishu',
+    key: 'app_secret',
+    desc: '飞书的app_secret',
+    value: '******'
+  },
+  {
+    item: 'feishu',
+    key: 'receive_id',
+    desc: '飞书的receive_id',
+    value: '******'
+  },
+  {
+    item: 'feishu',
+    key: 'receive_id_type',
+    desc: '飞书的receive_id_type',
+    value: 'chat_id'
+  }
+])"
+```
