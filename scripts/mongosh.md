@@ -46,7 +46,7 @@ db.features.countDocuments({
     ]
 })
 ```
-# 2026-05-16 增加配置
+# 2026-05-16 [add:飞书发送群消息]增加配置
 ```shell
 mongosh "mongodb://127.0.0.1:27017/technical_analysis" --eval "db.config.insertMany([
   {
