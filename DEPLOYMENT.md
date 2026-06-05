@@ -132,7 +132,36 @@ api:
     # OKX API 配置
     - OKEX_API_BASE_URL=https://www.okx.com
     - INST_ID=ETH-USDT-SWAP
+    
+    # 代理配置（仅开发环境）
+    # 生产环境 PROXY_ENABLED 必须设置为 false 或不设置
+    # PRODUCTION_MODE=true 时即使 PROXY_ENABLED=true 也不会使用代理
+    - PROXY_ENABLED=false
+    - PROXY_HOST=localhost
+    - PROXY_PORT=7899
 ```
+
+### 开发环境代理配置
+
+在开发环境中，如果需要通过代理访问 OKEx API，请在 `.env` 文件中配置：
+
+```env
+# 开发环境启用代理
+PROXY_ENABLED=true
+PROXY_HOST=localhost
+PROXY_PORT=7899
+PRODUCTION_MODE=false
+
+# 生产环境设置为 false
+PROXY_ENABLED=false
+```
+
+**重要说明：**
+- 代理仅在 `PRODUCTION_MODE=false` 且 `PROXY_ENABLED=true` 时生效
+- 生产环境（`PRODUCTION_MODE=true`）会自动禁用代理
+- 默认代理地址：`http://localhost:7899`
+- 开发环境会自动禁用 SSL 验证以支持代理（仅 `PRODUCTION_MODE=false` 时）
+- 生产环境始终启用 SSL 验证确保安全
 
 ### 自定义配置
 

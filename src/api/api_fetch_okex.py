@@ -97,18 +97,30 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
     
     candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = bar, limit = limit, sort_desc = True)
+    
+    if not candles or len(candles) == 0:
+        raise HTTPException(status_code=404, detail=f"No candlestick data found for inst_id={inst_id}, bar={bar}")
         
     close = pd.Series(item['close'] for item in candles)
     volume = pd.Series(item['volume'] for item in candles)
     assert close is not None
     assert volume is not None
-    _, mean_close, std = NORMALIZED.calculate(close)
-    _, mean_volume, std_volume  = NORMALIZED.calculate(volume)
+    
+    try:
+        _, mean_close, std = NORMALIZED.calculate(close)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Failed to calculate close normalization: {str(e)}")
+    
+    try:
+        _, mean_volume, std_volume  = NORMALIZED.calculate(volume)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Failed to calculate volume normalization: {str(e)}")
+    
     is_close_saved = normalization_handler.save_normalization_params(inst_id = inst_id, bar = bar, column = 'close', mean = mean_close, std = std)
     is_volume_saved = normalization_handler.save_normalization_params(inst_id = inst_id, bar = bar, column = 'volume', mean = mean_volume, std = std_volume)
     success = is_close_saved and is_volume_saved
     if not success:
-        raise HTTPException(status_code=404, detail="No data found")
+        raise HTTPException(status_code=500, detail="Failed to save normalization parameters")
     return {
         "inst_id": inst_id,
         "bar": bar,

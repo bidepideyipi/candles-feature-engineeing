@@ -15,9 +15,10 @@ from collect.async_candlestick_handler import async_candlestick_handler
 
 log = logging.getLogger(__name__)
 
+# TODO 合并特征太慢了6到7秒100条, 2万条大概20分钟
 class FeatureMerge:
     
-    def __init__(self, batch_size: int = 1000):
+    def __init__(self, batch_size: int = 100):
         self.inst_id = "ETH-USDT-SWAP"
         self.batch_size = batch_size
         self._batch_cache: List[Feature] = []
@@ -327,6 +328,8 @@ class FeatureMerge:
             ema_48_1h=feature1h_result.ema_48_1h,
             ema_cross_1h_12_26=feature1h_result.ema_cross_1h_12_26,
             ema_cross_1h_26_48=feature1h_result.ema_cross_1h_26_48,
+            atr_ratio_1h_15m=feature1h_result.atr_ratio_1h_15m,
+            rsi_divergence_1h=feature1h_result.rsi_divergence_1h,
             rsi_14_15m=feature15m_result.rsi_14_15m,
             volume_impulse_15m=feature15m_result.volume_impulse_15m,
             macd_line_15m=feature15m_result.macd_line_15m,
@@ -353,6 +356,8 @@ class FeatureMerge:
             lower_shadow_ratio_4h=feature4h_result.lower_shadow_ratio_4h,
             shadow_imbalance_4h=feature4h_result.shadow_imbalance_4h,
             body_ratio_4h=feature4h_result.body_ratio_4h,
+            atr_ratio_4h_1h=feature4h_result.atr_ratio_4h_1h,
+            rsi_divergence_4h=feature4h_result.rsi_divergence_4h,
             rsi_14_1d=feature1D_result.rsi_14_1d,
             atr_1d=feature1D_result.atr_1d,
             bollinger_upper_1d=feature1D_result.bollinger_upper_1d,

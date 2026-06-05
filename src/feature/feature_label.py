@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from collect.candlestick_handler import candlestick_handler
 from collect.feature_handler import feature_handler
@@ -19,16 +19,28 @@ class FeatureLabel:
             log.warning(f"获取特征失败, inst_id: {inst_id}, bar: 1H")
             return False
         
+        success_count = 0
+        skip_count = 0
+        
         for i, feature in enumerate(features):
             if i >= limit:
                 break
             labels = self.process(feature = feature)
+            
+            # 检查返回值是否有效
+            if labels is None or not isinstance(labels, dict):
+                skip_count += 1
+                log.warning(f"标签计算失败, timestamp: {feature.get('timestamp')}")
+                continue
+            
             timestamp = feature.get("timestamp")
             feature_handler.update_feature_label(inst_id = inst_id, timestamp = timestamp, label = labels["label"], label_high = labels["label_high"], label_low = labels["label_low"])
+            success_count += 1
         
+        log.info(f"标签合并完成 - 成功: {success_count}, 跳过: {skip_count}, 总计: {len(features)}")
         return True
     
-    def process(self, feature: Dict[str, Any]) -> Dict[str, Any]:
+    def process(self, feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         处理单个特征，生成24小时后Close价格的涨跌幅度标签
         """
@@ -37,8 +49,8 @@ class FeatureLabel:
         candles = candlestick_handler.get_candlestick_data(inst_id = inst_id, bar = "1H", limit = 24, after = timestamp)
         
         if not candles or len(candles) != 24:
-            log.warning(f"获取1H蜡烛数据失败, inst_id: {inst_id}, timestamp: {timestamp}")
-            return False
+            log.warning(f"获取1H蜡烛数据失败, inst_id: {inst_id}, timestamp: {timestamp}, candles数量: {len(candles) if candles else 0}")
+            return None
         
         first_open = candles[0].get("open")
         last_close = candles[-1].get("close")
@@ -46,8 +58,8 @@ class FeatureLabel:
         min_low = min(c.get("low") for c in candles)
         
         if first_open is None or last_close is None or first_open == 0:
-            log.warning(f"价格数据异常, first_open: {first_open}, last_close: {last_close}")
-            return False
+            log.warning(f"价格数据异常, inst_id: {inst_id}, timestamp: {timestamp}, first_open: {first_open}, last_close: {last_close}")
+            return None
         
         price_change_pct = (last_close - first_open) / first_open * 100
         price_change_pct_high = (max_high - first_open) / first_open * 100

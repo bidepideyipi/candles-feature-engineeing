@@ -11,7 +11,10 @@ from utils.trend_continuation_calulator import TREND_CONTINUATION_CALCULATOR
 from utils.atr_calculator import ATR_CALCULATOR
 from utils.adx_calculator import ADX_CALCULATOR
 from utils.ema_calculator import EMA_12, EMA_26, EMA_48, EMACrossoverSignal
+from utils.rsi_divergence_calculator import RSI_DIVERGENCE_DETECTOR 
+from utils.atr_ratio_calculator import ATR_RATIO_CALCULATOR
 from feature.feature_types import Feature1H
+
 
 class Feature1HCreator(BaseTechnicalCalculator):
 
@@ -34,6 +37,10 @@ class Feature1HCreator(BaseTechnicalCalculator):
         self.ema_12 = EMA_12
         self.ema_26 = EMA_26
         self.ema_48 = EMA_48
+        self.rsi_divergence_calculator = RSI_DIVERGENCE_DETECTOR
+        self.atr_ratio_calculator = ATR_RATIO_CALCULATOR
+        
+        #print(f"DEBUG 1H初始化: atr_ratio_calculator={self.atr_ratio_calculator}, rsi_divergence_calculator={self.rsi_divergence_calculator}")
         
         
     def calculate(self, candles1h: List[Dict[str, Any]]) -> Feature1H:
@@ -92,6 +99,22 @@ class Feature1HCreator(BaseTechnicalCalculator):
             pd.Series(item['close'] for item in candles1h)
         )
         
+        # 20260604 新增特征 - 构建OHLC DataFrame
+        ohlc_df = pd.DataFrame(candles1h)
+        try:
+            atr_ratio_1h_15m = round(self.atr_ratio_calculator.calculate(ohlc_df), 2)
+            #print(f"DEBUG 1H ATR比值计算成功: {atr_ratio_1h_15m}")
+        except Exception as e:
+            #print(f"DEBUG 1H ATR比值计算失败: {e}")
+            atr_ratio_1h_15m = 0.0
+        
+        try:
+            rsi_divergence_1h = self.rsi_divergence_calculator.calculate(close1h)
+            #print(f"DEBUG 1H RSI背离计算成功: {rsi_divergence_1h}")
+        except Exception as e:
+            #print(f"DEBUG 1H RSI背离计算失败: {e}")
+            rsi_divergence_1h = 0
+        
         return Feature1H(
             close_1h_normalized=close_1h_normalized,
             volume_1h_normalized=volume_1h_normalized,
@@ -116,5 +139,7 @@ class Feature1HCreator(BaseTechnicalCalculator):
             ema_48_1h=ema_48_1h,
             ema_cross_1h_12_26=ema_cross_1h_12_26,
             ema_cross_1h_26_48=ema_cross_1h_26_48,
+            atr_ratio_1h_15m=atr_ratio_1h_15m,
+            rsi_divergence_1h=rsi_divergence_1h,
         )
     

@@ -28,18 +28,22 @@ class Normalized(BaseTechnicalCalculator):
         # Convert to pandas Series if needed
         prices_series = self._convert_to_series(close_prices)
         
-        # Calculate rolling statistics
-        # window = len(prices_series)
-        # rolling_mean = prices_series.rolling(window=window, min_periods=1).mean()
-        # rolling_std = prices_series.rolling(window=window, min_periods=1).std()
+        # 检查数据是否有效
+        if len(prices_series) == 0:
+            raise ValueError("Cannot calculate normalization: input data is empty")
         
         # 优化性能，直接计算整体均值和标准差，而不是滚动窗口
         rolling_mean = prices_series.mean()
         rolling_std = prices_series.std()
         
+        # 处理标准差为 0 或 NaN 的情况（所有值相同或只有一个值）
+        if pd.isna(rolling_std) or rolling_std == 0:
+            raise ValueError(f"Cannot calculate normalization: std is {rolling_std}, mean={rolling_mean}")
+        
         # Normalize prices
         normalized = (prices_series - rolling_mean) / rolling_std
         
-        return self._get_last_value(normalized), self._get_last_value(rolling_mean), self._get_last_value(rolling_std)
+        # 返回最后一个归一化值、均值和标准差（都是标量）
+        return float(normalized.iloc[-1]), float(rolling_mean), float(rolling_std)
 
 NORMALIZED = Normalized()

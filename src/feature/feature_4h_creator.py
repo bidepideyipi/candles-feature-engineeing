@@ -12,6 +12,8 @@ from utils.adx_calculator import ADX_CALCULATOR
 from utils.ema_calculator import EMA_12, EMA_26, EMA_48, EMACrossoverSignal
 from utils.pinbar_calculator import PINBAR_CALCULATOR
 from feature.feature_types import Feature4H
+from utils.rsi_divergence_calculator import RSI_DIVERGENCE_DETECTOR 
+from utils.atr_ratio_calculator import ATR_RATIO_CALCULATOR
 
 class Feature4HCreator(BaseTechnicalCalculator):
 
@@ -32,6 +34,10 @@ class Feature4HCreator(BaseTechnicalCalculator):
         self.pinbar_calculator = PINBAR_CALCULATOR
         self.close_mean = close_mean
         self.close_std = close_std
+        self.rsi_divergence_calculator = RSI_DIVERGENCE_DETECTOR
+        self.atr_ratio_calculator = ATR_RATIO_CALCULATOR
+        
+        #print(f"DEBUG 4H初始化: atr_ratio_calculator={self.atr_ratio_calculator}, rsi_divergence_calculator={self.rsi_divergence_calculator}")
         
     def calculate(self, candles4H: List[Dict[str, Any]]) -> Feature4H:
         """
@@ -80,6 +86,21 @@ class Feature4HCreator(BaseTechnicalCalculator):
             close_prices=df['close']
         )
         
+        # 20260604 新增特征 - 使用已有的OHLC DataFrame
+        try:
+            atr_ratio_4h_1h = round(self.atr_ratio_calculator.calculate(df), 2)
+            #print(f" ATR比值计算成功: {atr_ratio_4h_1h}")
+        except Exception as e:
+            #print(f"DEBUG 4H ATR比值计算失败: {e}")
+            atr_ratio_4h_1h = 0.0
+        
+        try:
+            rsi_divergence_4h = self.rsi_divergence_calculator.calculate(close4H)
+            #print(f"DEBUG 4H RSI背离计算成功: {rsi_divergence_4h}")
+        except Exception as e:
+            #print(f"DEBUG 4H RSI背离计算失败: {e}")
+            rsi_divergence_4h = 0
+        
         return Feature4H(
             rsi_14_4h=rsi_14_4h,
             trend_continuation_4h=trend_continuation_4h,
@@ -99,5 +120,7 @@ class Feature4HCreator(BaseTechnicalCalculator):
             lower_shadow_ratio_4h=round(pinbar_features['lower_shadow_ratio'], 2),
             shadow_imbalance_4h=round(pinbar_features['shadow_imbalance'], 2),
             body_ratio_4h=round(pinbar_features['body_ratio'], 2),
+            atr_ratio_4h_1h=atr_ratio_4h_1h,
+            rsi_divergence_4h=rsi_divergence_4h,
         )
     

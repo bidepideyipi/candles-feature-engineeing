@@ -36,6 +36,10 @@ class Feature1H(BaseModel):
     ema_cross_1h_12_26: int = Field(default=0, description="EMA 12/26 交叉信号")
     ema_cross_1h_26_48: int = Field(default=0, description="EMA 26/48 交叉信号")
     
+    # 20260604 新增特征
+    atr_ratio_1h_15m: float = Field(default=0.0, description="1H/15分钟 ATR比值")
+    rsi_divergence_1h: float = Field(default=0.0, description="1小时RSI背离信号")
+    
     model_config = ConfigDict(extra="ignore")
 
 
@@ -74,6 +78,10 @@ class Feature4H(BaseModel):
     lower_shadow_ratio_4h: float = Field(default=0.0, description="下引线比例")
     shadow_imbalance_4h: float = Field(default=0.0, description="引线不平衡")
     body_ratio_4h: float = Field(default=0.0, description="实体比例")
+    
+    # 20260604 新增特征
+    atr_ratio_4h_1h: float = Field(default=0.0, description="4H/1小时 ATR比值")
+    rsi_divergence_4h: float = Field(default=0.0, description="4小时RSI背离信号")
     
     model_config = ConfigDict(extra="ignore")
 

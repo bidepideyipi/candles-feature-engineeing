@@ -42,6 +42,12 @@ class Config:
     # OKEx API Configuration
     OKEX_API_BASE_URL = os.getenv('OKEX_API_BASE_URL', 'https://www.okx.com')
     
+    # Proxy Configuration
+    PROXY_ENABLED = os.getenv('PROXY_ENABLED', 'false').lower() == 'true'
+    PROXY_HOST = os.getenv('PROXY_HOST', 'localhost')
+    PROXY_PORT = int(os.getenv('PROXY_PORT', '7899'))
+    PROXY_URL = f"http://{PROXY_HOST}:{PROXY_PORT}"
+    
     # Model Configuration
     MODEL_SAVE_PATH = os.getenv('MODEL_SAVE_PATH', 'models/xgboost_model.json')
     MODEL_SAVE_PATH_LOW = os.getenv('MODEL_SAVE_PATH_LOW', 'models/xgboost_model_low.json')

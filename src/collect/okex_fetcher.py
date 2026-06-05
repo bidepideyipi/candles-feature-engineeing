@@ -27,6 +27,31 @@ class OKExDataFetcher:
             'Content-Type': 'application/json',
             'User-Agent': 'TechnicalAnalysisHelper/1.0'
         })
+        
+        # 设置代理（仅开发环境）
+        logger.info(f"Checking proxy settings...")
+        logger.info(f"PROXY_ENABLED: {config.PROXY_ENABLED}")
+        logger.info(f"PRODUCTION_MODE: {config.PRODUCTION_MODE}")
+        logger.info(f"PROXY_URL: {config.PROXY_URL}")
+        
+        # 禁用 SSL 警告（仅开发环境）
+        if config.PROXY_ENABLED and not config.PRODUCTION_MODE:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            proxy_dict = {
+                'http': config.PROXY_URL,
+                'https': config.PROXY_URL
+            }
+            self.session.proxies.update(proxy_dict)
+            self.session.verify = False  # 禁用 SSL 验证
+            logger.info(f"✓ Proxy enabled: {config.PROXY_URL} (Development mode)")
+            logger.info(f"  Session proxies: {self.session.proxies}")
+            logger.info(f"  SSL verification: DISABLED (development mode)")
+        else:
+            logger.info("✗ Proxy disabled (Production mode or not enabled)")
+            logger.info(f"  Session proxies: {self.session.proxies}")
+            logger.info(f"  SSL verification: ENABLED")
     
     # 获取最近的 K 线数据（默认是100条）
     def fetch_candlesticks(self, inst_id: str = None, bar: str = "1H", after: Optional[str] = None) -> List[List[str]]:
