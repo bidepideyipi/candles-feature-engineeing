@@ -1,12 +1,14 @@
-"""Regime (Option C) API: 标注 / 训练 / 预测市场结构。"""
-from typing import Any, Dict
+"""Regime (Option C) API: 标注 / 训练 / 预测市场结构 / 一键流水线。"""
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
+from collect.candlestick_continuity import candlestick_continuity_checker
 from config.settings import config
 from feature.feature_merge import FeatureMerge
 from models.regime_trainer import regime_trainer
 from regime.regime_labeler import RegimeLabeler
+from regime.regime_pipeline import regime_pipeline
 from stream.redis_stream_handler import redis_stream_handler
 
 router = APIRouter(prefix="/regime", tags=["regime"])
@@ -26,6 +28,61 @@ def regime_stats(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H") -> Dict[str, A
         "regime_labeled": labeled,
         "regime_unlabeled": max(0, total - labeled),
     }
+
+
+@router.get("/check-continuity")
+def check_continuity(
+    inst_id: str = "ETH-USDT-SWAP",
+    limit: Optional[int] = Query(
+        None, description="仅检查最近 N 根；默认全量"
+    ),
+) -> Dict[str, Any]:
+    """
+    检查 15m / 1H / 4H / 1D K 线是否按周期连续。
+    替代手工查库验缺口；流水线在 strict 模式下也会调用。
+    """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="Disabled in production mode")
+    return candlestick_continuity_checker.check_all(inst_id=inst_id, limit=limit)
+
+
+@router.get("/pipeline")
+def run_regime_pipeline(
+    inst_id: str = "ETH-USDT-SWAP",
+    max_records_1h: int = Query(2400, ge=100, le=10000),
+    skip_pull: bool = False,
+    strict_continuity: bool = True,
+    merge_limit: int = Query(5000, ge=1, le=200000),
+    label_limit: int = Query(50000, ge=1, le=200000),
+    only_fix_none_label: bool = True,
+    train_limit: int = Query(10000, ge=200, le=200000),
+    test_ratio: float = Query(0.2, ge=0.05, le=0.5),
+) -> Dict[str, Any]:
+    """
+    Regime 一键流水线：拉取多周期 K 线 → 连续性校验 → 合并特征 →
+    regime 标注 → 训练 → 返回聚合报告（summary）。
+
+    推荐：开发环境一次跑通训练。
+    - skip_pull=true：跳过 OKX 拉取，用已有 Mongo 数据
+    - strict_continuity=true（默认）：任一周期有缺口则中止，避免脏特征
+    """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="Disabled in production mode")
+
+    try:
+        return regime_pipeline.run(
+            inst_id=inst_id,
+            max_records_1h=max_records_1h,
+            skip_pull=skip_pull,
+            strict_continuity=strict_continuity,
+            merge_limit=merge_limit,
+            label_limit=label_limit,
+            only_fix_none_label=only_fix_none_label,
+            train_limit=train_limit,
+            test_ratio=test_ratio,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {e}") from e
 
 
 @router.get("/1-label")

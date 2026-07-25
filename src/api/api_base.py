@@ -36,6 +36,8 @@ def read_root():
         "endpoints": [
             "/health",
             "/fetch/5-predict",
+            "/regime/pipeline",
+            "/regime/check-continuity",
             "/regime/1-label",
             "/regime/2-train",
             "/regime/3-predict",
