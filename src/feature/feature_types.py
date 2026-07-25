@@ -113,6 +113,7 @@ class FeatureBase(BaseModel):
     label: Optional[int] = Field(default=None, description="标签(收盘价波动)")
     label_high: Optional[int] = Field(default=None, description="标签(高点波动)")
     label_low: Optional[int] = Field(default=None, description="标签(低点波动)")
+    regime_label: Optional[int] = Field(default=None, description="市场结构: 1=TREND_UP 2=TREND_DOWN 3=RANGE")
 
 
 class Feature(FeatureBase, Feature1H, Feature15M, Feature4H, Feature1D):

@@ -43,6 +43,31 @@ class RedisStreamHandler:
             self.redis_client = None
             return False
     
+    def publish_regime(self, regime_data: Dict[str, Any]) -> bool:
+        if self.redis_client is None:
+            logger.warning("Redis not available, skipping regime publish")
+            return False
+        try:
+            message = {
+                "type": "regime",
+                "timestamp": str(regime_data.get("timestamp", 0)),
+                "inst_id": regime_data.get("inst_id", "ETH-USDT-SWAP"),
+                "bar": regime_data.get("bar", "1H"),
+                "regime": str(regime_data.get("regime", 0)),
+                "regime_label": regime_data.get("regime_label", ""),
+                "recommended_strategy": regime_data.get("recommended_strategy", ""),
+                "confidence": str(regime_data.get("confidence", 0)),
+                "probabilities": json.dumps(regime_data.get("probabilities", {})),
+                "price": str(regime_data.get("price", "")),
+            }
+            stream = config.REDIS_REGIME_STREAM
+            message_id = self.redis_client.xadd(stream, message)
+            logger.info("Published regime to %s: %s", stream, message_id)
+            return True
+        except RedisError as e:
+            logger.error("Failed to publish regime: %s", e)
+            return False
+
     def publish_prediction(self, prediction_data: Dict[str, Any]) -> bool:
         if self.redis_client is None:
             logger.warning("Redis not available, skipping stream publish")

@@ -84,14 +84,17 @@ def fetch_okex_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
-@router.get("/2-normalize")
+@router.get("/2-normalize", deprecated=True)
 def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 20000):
     """
-    归一化数据
-    
-    系统的第二步是对数据进行归一化，这是第二个要请求的接口。
-    归一化的目的是将数据转换为-5到5之间的范围，这在很多机器学习算法中都是必要的。
-    执行完毕后 db.features.deleteMany({}) 以删除features集合。归一化的数据发生变化后，所有特征需要重新计算。
+    **[DEPRECATED]** 全局静态归一化 — 已被滚动归一化取代。
+
+    自 v1.1 起，特征合并 `/fetch/3-merge-feature` 在计算每条 feature 时
+    自动使用最近 **168 根 1H K 线** 做 rolling mean/std，**无需再调用本接口**。
+
+    若仍调用，行为不变（写入 MongoDB normalizer 集合），但 feature 流水线已忽略该数据。
+
+    新流程：`1-pull-history` → `3-merge-feature` → `4-lable`
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
@@ -103,8 +106,6 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
         
     close = pd.Series(item['close'] for item in candles)
     volume = pd.Series(item['volume'] for item in candles)
-    assert close is not None
-    assert volume is not None
     
     try:
         _, mean_close, std = NORMALIZED.calculate(close)
@@ -124,26 +125,34 @@ def normalize_data(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int =
     return {
         "inst_id": inst_id,
         "bar": bar,
-        "success": success
+        "success": success,
+        "deprecated": True,
+        "message": "此接口已废弃。请直接使用 /fetch/3-merge-feature，滚动窗口=168 根 1H。",
+        "replacement": "rolling normalization in FeatureMerge (ROLLING_NORM_WINDOW=168)",
     }
     
 @router.get("/3-merge-feature")
 def merge_feature(limit: int = 5000, before: int = None):
     """
-    合并特征
-    
-    系统的第三步是合并特征，这是第三个要请求的接口。
-    合并特征的目的是将归一化后的数据合并到一个DataFrame中，这在很多机器学习算法中都是必要的。
-    按1H数据时间倒序取第25条的时间戳为before的值。因为后续生成标签数据的时候需要倒推24小时。
+    合并特征（含 **168 根 1H 滚动归一化**，无需先调 /2-normalize）。
+
+    推荐流程：`1-pull-history` → `3-merge-feature` → `4-lable`
+
+    `/2-normalize` 已废弃；归一化参数在每条 feature 计算时按 timestamp 动态生成。
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
     
     feature_merge = FeatureMerge()
-    feature_merge.loop(limit=limit, before=before)
+    stats = feature_merge.loop(limit=limit, before=before)
+    from collect.feature_handler import feature_handler
+    stats["features_in_db"] = feature_handler.count_features(
+        inst_id="ETH-USDT-SWAP", bar="1H"
+    )
     return {
         "limit": limit,
-        "success": True
+        "before": before,
+        **stats,
     }
 
 @router.get("/4-lable")

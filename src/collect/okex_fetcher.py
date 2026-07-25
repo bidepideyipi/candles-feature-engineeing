@@ -131,18 +131,24 @@ class OKExDataFetcher:
         endpoint = "/api/v5/market/candles"
         url = f"{self.base_url}{endpoint}"
         
-        # Timeframes to fetch
-        timeframes = ["1D", "4H", "1H", "15m"]
+        # Timeframes to fetch (1H needs rolling_norm_window bars for dynamic normalization)
+        from config.settings import config
+        timeframes_limits = {
+            "1D": config.FEATURE_CANDLE_WINDOW,
+            "4H": config.FEATURE_CANDLE_WINDOW,
+            "1H": config.ROLLING_NORM_WINDOW,
+            "15m": config.FEATURE_CANDLE_WINDOW,
+        }
         results = {}
         
-        for timeframe in timeframes:
+        for timeframe, fetch_limit in timeframes_limits.items():
             params = {
                 "instId": instrument_id,
                 "bar": timeframe,
-                "limit": 48
+                "limit": fetch_limit
             }
             
-            logger.info(f"Fetching realtime candles: instId={instrument_id}, bar={timeframe}, limit=48")
+            logger.info(f"Fetching realtime candles: instId={instrument_id}, bar={timeframe}, limit={fetch_limit}")
             
             try:
                 # Apply rate limiting

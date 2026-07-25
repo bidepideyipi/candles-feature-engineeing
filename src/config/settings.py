@@ -17,6 +17,7 @@ class Config:
     REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
     REDIS_DB = int(os.getenv('REDIS_DB', '1'))
     REDIS_SIGNAL_STREAM = os.getenv('REDIS_SIGNAL_STREAM', 'signals')
+    REDIS_REGIME_STREAM = os.getenv('REDIS_REGIME_STREAM', 'regime_signals')
     
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
@@ -52,7 +53,10 @@ class Config:
     MODEL_SAVE_PATH = os.getenv('MODEL_SAVE_PATH', 'models/xgboost_model.json')
     MODEL_SAVE_PATH_LOW = os.getenv('MODEL_SAVE_PATH_LOW', 'models/xgboost_model_low.json')
     MODEL_SAVE_PATH_HIGH = os.getenv('MODEL_SAVE_PATH_HIGH', 'models/xgboost_model_high.json')
+    REGIME_MODEL_SAVE_PATH = os.getenv('REGIME_MODEL_SAVE_PATH', 'models/regime_model.json')
     FEATURE_WINDOW_SIZE = int(os.getenv('FEATURE_WINDOW_SIZE', '300'))
+    ROLLING_NORM_WINDOW = int(os.getenv('ROLLING_NORM_WINDOW', '168'))
+    FEATURE_CANDLE_WINDOW = int(os.getenv('FEATURE_CANDLE_WINDOW', '48'))
     
     # Time windows for technical indicators (in hours)
     TIME_WINDOWS = {
