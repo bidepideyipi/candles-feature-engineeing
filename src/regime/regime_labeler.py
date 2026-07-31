@@ -87,7 +87,7 @@ class RegimeLabeler:
                 "matched": 0,
                 "modified": 0,
                 "unchanged": 0,
-                "message": "未找到可处理的 feature，请先执行 /fetch/3-merge-feature",
+                "message": "未找到可处理的 feature，请先执行 /regime/pipeline",
             }
 
         matched = 0

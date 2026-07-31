@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.api_fetch_okex import router as fetch_router
 from api.api_config import router as config_router
-from api.api_technical_indicators import router as technical_router
 from api.api_regime import router as regime_router
 
 # Create FastAPI application
@@ -22,9 +20,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(fetch_router)
 app.include_router(config_router)
-app.include_router(technical_router)
 app.include_router(regime_router)
 
 # Root endpoint
@@ -35,14 +31,15 @@ def read_root():
         "version": "1.0.0",
         "endpoints": [
             "/health",
-            "/fetch/5-predict",
-            "/regime/pipeline",
+            "/regime/0-stats",
+            "/regime/pull-history",
             "/regime/check-continuity",
+            "/regime/pipeline",
             "/regime/1-label",
             "/regime/2-train",
             "/regime/3-predict",
             "/regime/explain-rules",
-            "/config"
+            "/config",
         ]
     }
 

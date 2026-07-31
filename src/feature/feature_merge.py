@@ -28,13 +28,7 @@ class FeatureMerge:
 
     def _fetch_1h_for_norm(self, before: int = None) -> List[Dict[str, Any]]:
         """1H K 线：至少 feature_window 根用于指标，rolling_norm_window 根用于动态归一化。"""
-        candles = candlestick_handler.get_candlestick_data(
-            inst_id=self.inst_id,
-            bar='1H',
-            limit=self.rolling_norm_window,
-            before=before,
-        )
-        return candles[::-1] if candles else []
+        return self._fetch_candles("1H", self.rolling_norm_window, before)
 
     def _rolling_norm_params(self, candles1H: List[Dict[str, Any]]) -> Optional[Dict[str, float]]:
         if not candles1H or len(candles1H) < 2:
@@ -97,7 +91,7 @@ class FeatureMerge:
         cursor_before = self._resolve_initial_before(before)
         if cursor_before is None:
             stats["last_error"] = (
-                "MongoDB 无 1H K 线，请先执行 /fetch/1-pull-history"
+                "MongoDB 无 1H K 线，请先执行 /regime/pull-history 或 /regime/pipeline"
             )
             return stats
 
@@ -138,11 +132,25 @@ class FeatureMerge:
         """
         合并1小时、15分钟和4小时的特征参数（异步版本）
         """
+        # before 为空时必须 sort_desc=True，否则 limit 会取到库中最老的 K 线
+        sort_desc = before is None
         results = await asyncio.gather(
-            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1H', limit=self.rolling_norm_window, before=before),
-            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='15m', limit=self.feature_window, before=before),
-            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='4H', limit=self.feature_window, before=before),
-            async_candlestick_handler.get_candlestick_data(inst_id=self.inst_id, bar='1D', limit=self.feature_window, before=before),
+            async_candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, bar='1H', limit=self.rolling_norm_window,
+                before=before, sort_desc=sort_desc,
+            ),
+            async_candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, bar='15m', limit=self.feature_window,
+                before=before, sort_desc=sort_desc,
+            ),
+            async_candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, bar='4H', limit=self.feature_window,
+                before=before, sort_desc=sort_desc,
+            ),
+            async_candlestick_handler.get_candlestick_data(
+                inst_id=self.inst_id, bar='1D', limit=self.feature_window,
+                before=before, sort_desc=sort_desc,
+            ),
             return_exceptions=True
         )
         
@@ -228,22 +236,13 @@ class FeatureMerge:
         从 MongoDB candlestick 集合获取最近的数据并计算特征
         """
         try:
-            candles1H = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar='1H', limit=self.rolling_norm_window
-            )[::-1]
-            
-            candles15m = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar='15m', limit=self.feature_window
-            )[::-1]
-            
-            candles4H = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar='4H', limit=self.feature_window
-            )[::-1]
-            
-            candles1D = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar='1D', limit=self.feature_window
-            )[::-1]
-            
+            # 必须走 _fetch_candles(before=None)：内部 sort_desc=True 取最近 K 线。
+            # 若默认升序 limit，会拿到库中最老一段，导致多周期日期对不齐并返回 None。
+            candles1H = self._fetch_candles("1H", self.rolling_norm_window, None)
+            candles15m = self._fetch_candles("15m", self.feature_window, None)
+            candles4H = self._fetch_candles("4H", self.feature_window, None)
+            candles1D = self._fetch_candles("1D", self.feature_window, None)
+
             if not candles1H or not candles15m or not candles4H or not candles1D:
                 log.error("MongoDB 中数据不足")
                 return None

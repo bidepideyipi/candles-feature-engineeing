@@ -18,6 +18,16 @@ class Config:
     REDIS_DB = int(os.getenv('REDIS_DB', '1'))
     REDIS_SIGNAL_STREAM = os.getenv('REDIS_SIGNAL_STREAM', 'signals')
     REDIS_REGIME_STREAM = os.getenv('REDIS_REGIME_STREAM', 'regime_signals')
+    # regime:current:{inst_id} / regime:zwin:{inst_id} / regime:last_reversal:{inst_id}
+    REDIS_REGIME_CURRENT_PREFIX = os.getenv('REDIS_REGIME_CURRENT_PREFIX', 'regime:current')
+    REDIS_REGIME_ZWIN_PREFIX = os.getenv('REDIS_REGIME_ZWIN_PREFIX', 'regime:zwin')
+    REDIS_REGIME_LAST_REVERSAL_PREFIX = os.getenv(
+        'REDIS_REGIME_LAST_REVERSAL_PREFIX', 'regime:last_reversal'
+    )
+    # 滑动窗口长度（小时）；反转确认次数；最低置信度
+    REDIS_REGIME_WINDOW_HOURS = int(os.getenv('REDIS_REGIME_WINDOW_HOURS', '48'))
+    REDIS_REGIME_REVERSAL_CONFIRM = int(os.getenv('REDIS_REGIME_REVERSAL_CONFIRM', '2'))
+    REDIS_REGIME_MIN_CONFIDENCE = float(os.getenv('REDIS_REGIME_MIN_CONFIDENCE', '0.65'))
     
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')

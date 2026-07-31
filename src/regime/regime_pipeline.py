@@ -23,7 +23,7 @@ from regime.regime_types import REGIME_LABELS, MarketRegime
 
 logger = logging.getLogger(__name__)
 
-# 相对 1H 覆盖同一时间跨度的条数倍率（与 /fetch/1-pull-history 文档一致）
+# 相对 1H 覆盖同一时间跨度的条数倍率（与 /regime/pull-history 文档一致）
 BAR_RECORDS_FROM_1H = {
     "15m": 4,
     "1H": 1,
@@ -31,7 +31,7 @@ BAR_RECORDS_FROM_1H = {
     "1D": 1 / 24,
 }
 
-# OKEx 单次拉取接口上限（与 api_fetch_okex 一致）
+# OKEx 单次拉取接口上限（与 /regime/pull-history 一致）
 MAX_PULL_RECORDS = 10000
 PULL_ORDER = ("1D", "4H", "1H", "15m")
 

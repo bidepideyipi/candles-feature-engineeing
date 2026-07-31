@@ -35,7 +35,8 @@ class RegimeScheduler:
             return None
 
         payload = regime_trainer.build_prediction_payload(features)
-        redis_stream_handler.publish_regime(payload)
+        redis_meta = redis_stream_handler.publish_regime(payload)
+        payload["redis"] = redis_meta
         return payload
 
     def run(self):
@@ -47,27 +48,34 @@ class RegimeScheduler:
                 logger.info("=== Regime cycle #%s %s ===", cycle, datetime.now())
                 payload = self.predict_regime()
                 if payload:
+                    redis_meta = payload.get("redis") or {}
                     logger.info(
-                        "regime=%s strategy=%s confidence=%s",
+                        "regime=%s strategy=%s confidence=%s reversal_alerted=%s",
                         payload.get("regime_label"),
                         payload.get("recommended_strategy"),
                         payload.get("confidence"),
+                        redis_meta.get("reversal_alerted"),
                     )
-                    if payload.get("confidence", 0) >= 0.65:
+                    # 仅趋势反转告警时发邮件（与 Stream XADD 一致）
+                    if redis_meta.get("reversal_alerted"):
+                        rev = redis_meta.get("reversal") or {}
                         try:
                             email_sender.send_trading_alert(
                                 to_email=self.recipient,
                                 prediction_data={
-                                    "prediction_label": payload.get("regime_label"),
+                                    "prediction_label": (
+                                        f"REVERSAL {rev.get('from_regime_label')}→"
+                                        f"{rev.get('to_regime_label')}"
+                                    ),
                                     "prediction": payload.get("regime"),
                                     "probabilities": payload.get("probabilities"),
                                     "inst_id": payload.get("inst_id"),
                                     "price": payload.get("price"),
-                                    "bar": "REGIME",
+                                    "bar": "REGIME_REVERSAL",
                                 },
                             )
                         except Exception as e:
-                            logger.error("Regime email failed: %s", e)
+                            logger.error("Regime reversal email failed: %s", e)
                 time.sleep(self.interval_minutes * 60)
             except KeyboardInterrupt:
                 break

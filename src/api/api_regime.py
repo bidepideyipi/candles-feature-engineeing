@@ -1,9 +1,11 @@
-"""Regime (Option C) API: 标注 / 训练 / 预测市场结构 / 一键流水线。"""
+"""Regime API: 拉取 / 统计 / 标注 / 训练 / 预测 / 一键流水线。"""
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from collect.candlestick_continuity import candlestick_continuity_checker
+from collect.candlestick_continuity import DEFAULT_BARS, candlestick_continuity_checker
+from collect.candlestick_handler import candlestick_handler
+from collect.okex_fetcher import okex_fetcher
 from config.settings import config
 from feature.feature_merge import FeatureMerge
 from models.regime_trainer import regime_trainer
@@ -15,19 +17,75 @@ router = APIRouter(prefix="/regime", tags=["regime"])
 
 
 @router.get("/0-stats")
-def regime_stats(inst_id: str = "ETH-USDT-SWAP", bar: str = "1H") -> Dict[str, Any]:
-    """查看 feature 总量与 regime_label 覆盖情况。"""
+def regime_stats(
+    inst_id: str = "ETH-USDT-SWAP",
+    bar: str = "1H",
+) -> Dict[str, Any]:
+    """
+    查看 feature / regime_label 覆盖，以及各周期 K 线数量。
+    （原 /fetch/0-history-count 已并入 candlestick_counts。）
+    """
     from collect.feature_handler import feature_handler
 
     total = feature_handler.count_features(inst_id=inst_id, bar=bar)
     labeled = feature_handler.count_regime_labeled(inst_id=inst_id, bar=bar)
+    candlestick_counts = {
+        b: candlestick_handler.count(inst_id=inst_id, bar=b) for b in DEFAULT_BARS
+    }
     return {
         "inst_id": inst_id,
         "bar": bar,
         "total_features": total,
         "regime_labeled": labeled,
         "regime_unlabeled": max(0, total - labeled),
+        "candlestick_counts": candlestick_counts,
     }
+
+
+@router.get("/pull-history")
+def pull_history(
+    inst_id: str = "ETH-USDT-SWAP",
+    bar: str = "1H",
+    max_records: int = 600,
+    current_after: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    从 OKEx 拉取历史 K 线并写入 MongoDB（原 /fetch/1-pull-history）。
+
+    条数参考：4H=600 时，同跨度约 1H=2400、15m=9600、1D≈100。
+    单次 max_records 上限 10000。
+    """
+    if config.PRODUCTION_MODE:
+        raise HTTPException(status_code=403, detail="Disabled in production mode")
+
+    try:
+        if max_records < 1 or max_records > 10000:
+            raise HTTPException(
+                status_code=400, detail="max_records must be between 1 and 10000"
+            )
+        if bar not in list(DEFAULT_BARS):
+            raise HTTPException(status_code=400, detail="Invalid bar parameter")
+
+        success = okex_fetcher.fetch_historical_data(
+            inst_id=inst_id,
+            bar=bar,
+            max_records=max_records,
+            current_after=current_after,
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="No data found")
+
+        return {
+            "inst_id": inst_id,
+            "bar": bar,
+            "max_records": max_records,
+            "success": success,
+            "count": candlestick_handler.count(inst_id=inst_id, bar=bar),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {e}") from e
 
 
 @router.get("/check-continuity")
@@ -95,7 +153,7 @@ def label_regime(
     用规则引擎为 feature 打 regime_label（1=TREND_UP, 2=TREND_DOWN, 3=RANGE）。
     - only_fix_none=true：仅标注尚无 regime_label 的记录
     - only_fix_none=false：全量重标注（所有 feature）
-    需先完成 /fetch/3-merge-feature。
+    需先有 feature（可通过 /regime/pipeline 生成）。
     """
     if config.PRODUCTION_MODE:
         raise HTTPException(status_code=403, detail="Disabled in production mode")
@@ -132,10 +190,14 @@ def train_regime_model(
 def predict_regime(from_local: bool = True) -> Dict[str, Any]:
     """
     预测当前市场 regime，并推荐策略（default / grid）。
+    Redis：始终 SET 当前趋势；仅当滑动窗口检测到 UP↔DOWN 反转时才 XADD 告警。
     生产环境可用。
     """
     if not regime_trainer.load_model():
-        raise HTTPException(status_code=404, detail="Regime model not found. Run /regime/2-train first.")
+        raise HTTPException(
+            status_code=404,
+            detail="Regime model not found. Run /regime/2-train first.",
+        )
 
     feature_merge = FeatureMerge()
     features = (
@@ -147,7 +209,8 @@ def predict_regime(from_local: bool = True) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Failed to extract features")
 
     payload = regime_trainer.build_prediction_payload(features)
-    redis_stream_handler.publish_regime(payload)
+    redis_meta = redis_stream_handler.publish_regime(payload)
+    payload["redis"] = redis_meta
     return payload
 
 

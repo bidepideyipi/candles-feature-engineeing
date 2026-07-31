@@ -1,30 +1,37 @@
 """
-Redis Stream handler for publishing prediction signals.
+Redis handler: 当前 regime 用 SET；滑动窗口 ZSET 检测趋势反转后才 XADD 告警。
 """
 
-import logging
 import json
-from typing import Dict, Any, Optional
+import logging
+from typing import Any, Dict, List, Optional
+
 import redis
-from redis.exceptions import RedisError, ConnectionError
+from redis.exceptions import ConnectionError, RedisError
 
 from config.settings import config
+from regime.regime_types import REGIME_LABELS, MarketRegime
 
 logger = logging.getLogger(__name__)
 
+# 仅 UP ↔ DOWN 视为趋势反转；RANGE 不参与方向判定
+_DIRECTIONAL = {int(MarketRegime.TREND_UP), int(MarketRegime.TREND_DOWN)}
+
 
 class RedisStreamHandler:
-    """Handler for Redis Stream operations."""
-    
-    def __init__(self,
-                 redis_host: str = config.REDIS_HOST,
-                 redis_port: int = config.REDIS_PORT,
-                 redis_db: int = config.REDIS_DB,
-                 stream_name: str = config.REDIS_SIGNAL_STREAM):
+    """Redis：current key + zset 窗口；反转时写 Stream。"""
+
+    def __init__(
+        self,
+        redis_host: str = config.REDIS_HOST,
+        redis_port: int = config.REDIS_PORT,
+        redis_db: int = config.REDIS_DB,
+        stream_name: str = config.REDIS_SIGNAL_STREAM,
+    ):
         self.redis_client: Optional[redis.Redis] = None
         self.stream_name = stream_name
         self._connect_redis(redis_host, redis_port, redis_db)
-    
+
     def _connect_redis(self, host: str, port: int, db: int) -> bool:
         try:
             self.redis_client = redis.Redis(
@@ -33,46 +40,242 @@ class RedisStreamHandler:
                 db=db,
                 decode_responses=True,
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
             )
             self.redis_client.ping()
-            logger.info(f"Connected to Redis at {host}:{port}, db={db}")
+            logger.info("Connected to Redis at %s:%s, db=%s", host, port, db)
             return True
         except (RedisError, ConnectionError) as e:
-            logger.warning(f"Failed to connect to Redis: {e}")
+            logger.warning("Failed to connect to Redis: %s", e)
             self.redis_client = None
             return False
-    
-    def publish_regime(self, regime_data: Dict[str, Any]) -> bool:
+
+    @staticmethod
+    def _current_key(inst_id: str) -> str:
+        return f"{config.REDIS_REGIME_CURRENT_PREFIX}:{inst_id}"
+
+    @staticmethod
+    def _zwin_key(inst_id: str) -> str:
+        return f"{config.REDIS_REGIME_ZWIN_PREFIX}:{inst_id}"
+
+    @staticmethod
+    def _last_reversal_key(inst_id: str) -> str:
+        return f"{config.REDIS_REGIME_LAST_REVERSAL_PREFIX}:{inst_id}"
+
+    def publish_regime(self, regime_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        1) SET 当前趋势到 regime:current:{inst_id}
+        2) ZADD 滑动窗口并裁剪
+        3) 仅当检测到 UP↔DOWN 反转（且达到确认次数）时 XADD 到 regime stream
+
+        Returns:
+            写入结果摘要（供 API 透出）
+        """
+        result: Dict[str, Any] = {
+            "updated_current": False,
+            "window_size": 0,
+            "reversal_detected": False,
+            "reversal_alerted": False,
+            "stream_id": None,
+            "reversal": None,
+            "error": None,
+        }
         if self.redis_client is None:
+            result["error"] = "Redis not available"
             logger.warning("Redis not available, skipping regime publish")
-            return False
+            return result
+
         try:
-            message = {
+            inst_id = regime_data.get("inst_id", "ETH-USDT-SWAP")
+            ts = int(regime_data.get("timestamp") or 0)
+            if ts <= 0:
+                result["error"] = "invalid timestamp"
+                logger.error("publish_regime: invalid timestamp in %s", regime_data)
+                return result
+
+            current_payload = {
                 "type": "regime",
-                "timestamp": str(regime_data.get("timestamp", 0)),
-                "inst_id": regime_data.get("inst_id", "ETH-USDT-SWAP"),
+                "timestamp": ts,
+                "inst_id": inst_id,
                 "bar": regime_data.get("bar", "1H"),
-                "regime": str(regime_data.get("regime", 0)),
+                "regime": int(regime_data.get("regime", 0)),
                 "regime_label": regime_data.get("regime_label", ""),
                 "recommended_strategy": regime_data.get("recommended_strategy", ""),
-                "confidence": str(regime_data.get("confidence", 0)),
-                "probabilities": json.dumps(regime_data.get("probabilities", {})),
-                "price": str(regime_data.get("price", "")),
+                "confidence": float(regime_data.get("confidence", 0) or 0),
+                "probabilities": regime_data.get("probabilities", {}),
+                "price": regime_data.get("price"),
+            }
+
+            # ---- 1. SET 当前趋势 ----
+            current_key = self._current_key(inst_id)
+            self.redis_client.set(current_key, json.dumps(current_payload, ensure_ascii=False))
+            result["updated_current"] = True
+
+            # ---- 2. ZADD 窗口 + 裁剪 ----
+            zkey = self._zwin_key(inst_id)
+            member = json.dumps(
+                {
+                    "timestamp": ts,
+                    "regime": current_payload["regime"],
+                    "regime_label": current_payload["regime_label"],
+                    "confidence": current_payload["confidence"],
+                    "price": current_payload["price"],
+                    "recommended_strategy": current_payload["recommended_strategy"],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            # 同一 timestamp 只保留一条
+            old_at_ts = self.redis_client.zrangebyscore(zkey, ts, ts)
+            if old_at_ts:
+                self.redis_client.zrem(zkey, *old_at_ts)
+            self.redis_client.zadd(zkey, {member: ts})
+
+            window_ms = max(1, config.REDIS_REGIME_WINDOW_HOURS) * 60 * 60 * 1000
+            cutoff = ts - window_ms
+            self.redis_client.zremrangebyscore(zkey, "-inf", cutoff)
+
+            raw_members = self.redis_client.zrange(zkey, 0, -1)
+            window_points = self._parse_window_members(raw_members)
+            result["window_size"] = len(window_points)
+
+            # ---- 3. 反转检测 → 条件 XADD ----
+            reversal = self._detect_trend_reversal(window_points)
+            if not reversal:
+                logger.info(
+                    "Regime current set %s; window=%s; no reversal",
+                    current_key,
+                    result["window_size"],
+                )
+                return result
+
+            result["reversal_detected"] = True
+            result["reversal"] = reversal
+
+            alert_id = (
+                f"{reversal['from_regime']}:{reversal['to_regime']}:"
+                f"{reversal['streak_start_ts']}"
+            )
+            last_key = self._last_reversal_key(inst_id)
+            if self.redis_client.get(last_key) == alert_id:
+                logger.info("Reversal already alerted: %s", alert_id)
+                return result
+
+            stream_message = {
+                "type": "regime_reversal",
+                "timestamp": str(ts),
+                "inst_id": inst_id,
+                "bar": str(current_payload.get("bar", "1H")),
+                "from_regime": str(reversal["from_regime"]),
+                "from_regime_label": reversal["from_regime_label"],
+                "to_regime": str(reversal["to_regime"]),
+                "to_regime_label": reversal["to_regime_label"],
+                "confirm_count": str(reversal["confirm_count"]),
+                "streak_start_ts": str(reversal["streak_start_ts"]),
+                "confidence": str(current_payload["confidence"]),
+                "price": str(current_payload.get("price") or ""),
+                "recommended_strategy": str(
+                    current_payload.get("recommended_strategy") or ""
+                ),
+                "probabilities": json.dumps(current_payload.get("probabilities") or {}),
+                "current": json.dumps(current_payload, ensure_ascii=False),
             }
             stream = config.REDIS_REGIME_STREAM
-            message_id = self.redis_client.xadd(stream, message)
-            logger.info("Published regime to %s: %s", stream, message_id)
-            return True
+            message_id = self.redis_client.xadd(stream, stream_message)
+            self.redis_client.set(last_key, alert_id)
+            result["reversal_alerted"] = True
+            result["stream_id"] = message_id
+            logger.info(
+                "Regime reversal alerted to %s id=%s %s→%s",
+                stream,
+                message_id,
+                reversal["from_regime_label"],
+                reversal["to_regime_label"],
+            )
+            return result
         except RedisError as e:
+            result["error"] = str(e)
             logger.error("Failed to publish regime: %s", e)
-            return False
+            return result
+
+    @staticmethod
+    def _parse_window_members(raw_members: List[str]) -> List[Dict[str, Any]]:
+        points: List[Dict[str, Any]] = []
+        for raw in raw_members:
+            try:
+                obj = json.loads(raw)
+                points.append(
+                    {
+                        "timestamp": int(obj.get("timestamp", 0)),
+                        "regime": int(obj.get("regime", 0)),
+                        "regime_label": obj.get("regime_label", ""),
+                        "confidence": float(obj.get("confidence", 0) or 0),
+                        "price": obj.get("price"),
+                        "recommended_strategy": obj.get("recommended_strategy", ""),
+                    }
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as e:
+                logger.warning("Skip bad zwin member: %s (%s)", raw, e)
+        points.sort(key=lambda p: p["timestamp"])
+        return points
+
+    def _detect_trend_reversal(
+        self, window_points: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        在置信度过滤后的方向序列上：末尾连续 confirm 次为方向 A，
+        且 streak 前一方向为相反的 UP/DOWN → 判定反转。
+        """
+        min_conf = float(config.REDIS_REGIME_MIN_CONFIDENCE)
+        confirm = max(1, int(config.REDIS_REGIME_REVERSAL_CONFIRM))
+
+        directional = [
+            p
+            for p in window_points
+            if int(p["regime"]) in _DIRECTIONAL and float(p["confidence"]) >= min_conf
+        ]
+        if len(directional) < confirm + 1:
+            return None
+
+        curr = int(directional[-1]["regime"])
+        streak = 1
+        for i in range(len(directional) - 2, -1, -1):
+            if int(directional[i]["regime"]) == curr:
+                streak += 1
+            else:
+                break
+        if streak < confirm:
+            return None
+
+        before_idx = len(directional) - streak - 1
+        if before_idx < 0:
+            return None
+        prev = int(directional[before_idx]["regime"])
+        if prev not in _DIRECTIONAL or prev == curr:
+            return None
+
+        streak_start_ts = int(directional[-streak]["timestamp"])
+        try:
+            from_label = REGIME_LABELS[MarketRegime(prev)]
+            to_label = REGIME_LABELS[MarketRegime(curr)]
+        except ValueError:
+            from_label = str(prev)
+            to_label = str(curr)
+
+        return {
+            "from_regime": prev,
+            "from_regime_label": from_label,
+            "to_regime": curr,
+            "to_regime_label": to_label,
+            "confirm_count": streak,
+            "streak_start_ts": streak_start_ts,
+        }
 
     def publish_prediction(self, prediction_data: Dict[str, Any]) -> bool:
         if self.redis_client is None:
             logger.warning("Redis not available, skipping stream publish")
             return False
-        
+
         try:
             message = {
                 "timestamp": prediction_data.get("timestamp", 0),
@@ -85,21 +288,29 @@ class RedisStreamHandler:
                 "prediction_low": prediction_data.get("prediction_low", 0),
                 "prediction_low_label": prediction_data.get("prediction_low_label", ""),
                 "probabilities": json.dumps(prediction_data.get("probabilities", {})),
-                "probabilities_high": json.dumps(prediction_data.get("probabilities_high", {})),
-                "probabilities_low": json.dumps(prediction_data.get("probabilities_low", {})),
+                "probabilities_high": json.dumps(
+                    prediction_data.get("probabilities_high", {})
+                ),
+                "probabilities_low": json.dumps(
+                    prediction_data.get("probabilities_low", {})
+                ),
                 "features_count": prediction_data.get("features_count", 0),
                 "price": str(prediction_data.get("price")),
                 "line1": "0.012",
-                "line2": "0.036"
+                "line2": "0.036",
             }
-            
+
             message_id = self.redis_client.xadd(self.stream_name, message)
-            logger.info(f"Published prediction to Redis Stream: {self.stream_name}, message_id: {message_id}")
+            logger.info(
+                "Published prediction to Redis Stream: %s, message_id: %s",
+                self.stream_name,
+                message_id,
+            )
             return True
         except RedisError as e:
-            logger.error(f"Failed to publish to Redis Stream: {e}")
+            logger.error("Failed to publish to Redis Stream: %s", e)
             return False
-    
+
     def get_stream_length(self) -> int:
         if self.redis_client is None:
             return 0
@@ -108,7 +319,7 @@ class RedisStreamHandler:
             return info.get("length", 0)
         except RedisError:
             return 0
-    
+
     def is_connected(self) -> bool:
         if self.redis_client is None:
             return False
