@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Query
 from collect.candlestick_continuity import DEFAULT_BARS, candlestick_continuity_checker
 from collect.candlestick_handler import candlestick_handler
 from collect.okex_fetcher import okex_fetcher
-from config.settings import config
 from feature.feature_merge import FeatureMerge
 from models.regime_trainer import regime_trainer
 from regime.regime_labeler import RegimeLabeler
@@ -21,14 +20,12 @@ def regime_stats(
     inst_id: str = "ETH-USDT-SWAP",
     bar: str = "1H",
 ) -> Dict[str, Any]:
-    """
-    查看 feature / regime_label 覆盖，以及各周期 K 线数量。
-    （原 /fetch/0-history-count 已并入 candlestick_counts。）
-    """
+    """Feature coverage for present (regime_now) and forward (regime_48h) labels."""
     from collect.feature_handler import feature_handler
 
     total = feature_handler.count_features(inst_id=inst_id, bar=bar)
-    labeled = feature_handler.count_regime_labeled(inst_id=inst_id, bar=bar)
+    labeled_now = feature_handler.count_regime_labeled(inst_id=inst_id, bar=bar)
+    labeled_48h = feature_handler.count_regime_48h_labeled(inst_id=inst_id, bar=bar)
     candlestick_counts = {
         b: candlestick_handler.count(inst_id=inst_id, bar=b) for b in DEFAULT_BARS
     }
@@ -36,8 +33,13 @@ def regime_stats(
         "inst_id": inst_id,
         "bar": bar,
         "total_features": total,
-        "regime_labeled": labeled,
-        "regime_unlabeled": max(0, total - labeled),
+        "regime_now_labeled": labeled_now,
+        "regime_now_unlabeled": max(0, total - labeled_now),
+        "regime_48h_labeled": labeled_48h,
+        "regime_48h_unlabeled": max(0, total - labeled_48h),
+        # backward-compatible aliases
+        "regime_labeled": labeled_now,
+        "regime_unlabeled": max(0, total - labeled_now),
         "candlestick_counts": candlestick_counts,
     }
 
@@ -55,9 +57,6 @@ def pull_history(
     条数参考：4H=600 时，同跨度约 1H=2400、15m=9600、1D≈100。
     单次 max_records 上限 10000。
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="Disabled in production mode")
-
     try:
         if max_records < 1 or max_records > 10000:
             raise HTTPException(
@@ -99,9 +98,37 @@ def check_continuity(
     检查 15m / 1H / 4H / 1D K 线是否按周期连续。
     替代手工查库验缺口；流水线在 strict 模式下也会调用。
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="Disabled in production mode")
     return candlestick_continuity_checker.check_all(inst_id=inst_id, limit=limit)
+
+
+@router.get("/merge-features")
+def merge_features(
+    limit: int = Query(5000, ge=1, le=200000),
+    before: Optional[int] = Query(
+        None,
+        description="Optional 1H candle timestamp (ms); default = latest in Mongo",
+    ),
+) -> Dict[str, Any]:
+    """
+    Candlesticks → 1H feature rows (multi-TF indicators + rolling normalize).
+
+    Requires Mongo candlesticks for 15m / 1H / 4H / 1D (pull + continuity first).
+    Stepwise order: pull-history → check-continuity → **merge-features** →
+    1-label → 2-train. Also runs inside `/regime/pipeline`.
+    """
+    from collect.feature_handler import feature_handler
+
+    feature_merge = FeatureMerge()
+    stats = feature_merge.loop(before=before, limit=limit)
+    stats["features_in_db"] = feature_handler.count_features(
+        inst_id=feature_merge.inst_id, bar="1H"
+    )
+    if not stats.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=stats.get("last_error") or "Feature merge failed",
+        )
+    return stats
 
 
 @router.get("/pipeline")
@@ -110,23 +137,18 @@ def run_regime_pipeline(
     max_records_1h: int = Query(2400, ge=100, le=10000),
     skip_pull: bool = False,
     strict_continuity: bool = True,
-    merge_limit: int = Query(5000, ge=1, le=200000),
+    merge_limit: int = Query(20000, ge=1, le=200000),
     label_limit: int = Query(50000, ge=1, le=200000),
     only_fix_none_label: bool = True,
     train_limit: int = Query(10000, ge=200, le=200000),
     test_ratio: float = Query(0.2, ge=0.05, le=0.5),
 ) -> Dict[str, Any]:
     """
-    Regime 一键流水线：拉取多周期 K 线 → 连续性校验 → 合并特征 →
-    regime 标注 → 训练 → 返回聚合报告（summary）。
+    One-shot: pull → continuity → merge-features → dual label → train → summary.
 
-    推荐：开发环境一次跑通训练。
-    - skip_pull=true：跳过 OKX 拉取，用已有 Mongo 数据
-    - strict_continuity=true（默认）：任一周期有缺口则中止，避免脏特征
+    - skip_pull=true: use existing Mongo candlesticks
+    - strict_continuity=true (default): abort on any bar gap
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="Disabled in production mode")
-
     try:
         return regime_pipeline.run(
             inst_id=inst_id,
@@ -148,17 +170,20 @@ def label_regime(
     inst_id: str = "ETH-USDT-SWAP",
     only_fix_none: bool = True,
     limit: int = 50000,
+    horizon_hours: Optional[int] = Query(
+        None,
+        ge=1,
+        le=168,
+        description="Forward label horizon in 1H bars (default: REGIME_HORIZON_HOURS)",
+    ),
 ) -> Dict[str, Any]:
     """
-    用规则引擎为 feature 打 regime_label（1=TREND_UP, 2=TREND_DOWN, 3=RANGE）。
-    - only_fix_none=true：仅标注尚无 regime_label 的记录
-    - only_fix_none=false：全量重标注（所有 feature）
-    需先有 feature（可通过 /regime/pipeline 生成）。
+    Dual-track labels on 1H features:
+    - regime_now: rules at T (present)
+    - regime_48h: rules at T+horizon (Mongo field name kept; horizon configurable)
+    Changing horizon requires only_fix_none=false to rewrite forward labels.
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="Disabled in production mode")
-
-    labeler = RegimeLabeler()
+    labeler = RegimeLabeler(horizon_hours=horizon_hours)
     return labeler.loop(inst_id=inst_id, only_fix_none=only_fix_none, limit=limit)
 
 
@@ -167,17 +192,35 @@ def train_regime_model(
     inst_id: str = "ETH-USDT-SWAP",
     limit: int = 10000,
     test_ratio: float = 0.2,
+    class_weight: Optional[str] = Query(
+        None,
+        description="balanced (default from env) | none",
+    ),
+    horizon_hours: Optional[int] = Query(
+        None,
+        ge=1,
+        le=168,
+        description="Must match labeling horizon used for regime_48h",
+    ),
+    holdout_start_ts: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Optional fixed holdout start (ms) for fair horizon comparisons",
+    ),
 ) -> Dict[str, Any]:
     """
-    训练 regime XGBoost 三分类模型（时间序列切分，非随机 shuffle）。
-    需先执行 /regime/1-label。
+    Train XGBoost binary continue/change:
+    change := regime_fwd != regime_now over horizon.
+    Beats always-CONTINUE baseline is the primary gate.
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="Disabled in production mode")
-
     try:
         results = regime_trainer.train_model(
-            inst_id=inst_id, limit=limit, test_ratio=test_ratio
+            inst_id=inst_id,
+            limit=limit,
+            test_ratio=test_ratio,
+            class_weight=class_weight,
+            horizon_hours=horizon_hours,
+            holdout_start_ts=holdout_start_ts,
         )
         return {"success": True, **results}
     except ValueError as e:
@@ -189,14 +232,15 @@ def train_regime_model(
 @router.get("/3-predict")
 def predict_regime(from_local: bool = True) -> Dict[str, Any]:
     """
-    预测当前市场 regime，并推荐策略（default / grid）。
-    Redis：始终 SET 当前趋势；仅当滑动窗口检测到 UP↔DOWN 反转时才 XADD 告警。
-    生产环境可用。
+    Dual-track:
+    - present: rules (now)
+    - transition / derived: model P(change) over horizon
+    Redis zwin still tracks present UP↔DOWN reversals.
     """
     if not regime_trainer.load_model():
         raise HTTPException(
             status_code=404,
-            detail="Regime model not found. Run /regime/2-train first.",
+            detail="Continue/change model not found. Run /regime/2-train first.",
         )
 
     feature_merge = FeatureMerge()

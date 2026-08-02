@@ -83,31 +83,25 @@ class ATRRatioCalculator(BaseTechnicalCalculator):
         
         return float(ratio)
     
-    def calculate_cross_timeframe_ratio(self, 
-                                        short_df: pd.DataFrame, 
-                                        long_df: pd.DataFrame) -> float:
+    def calculate_cross_timeframe_ratio(
+        self,
+        numerator_df: pd.DataFrame,
+        denominator_df: pd.DataFrame,
+    ) -> float:
         """
-        计算跨时间框架ATR比值
-        
-        Args:
-            short_df: 短周期数据（如1H）
-            long_df: 长周期数据（如4H）
-            
-        Returns:
-            float: 跨周期ATR比值
+        Cross-timeframe ATR ratio: ATR(numerator) / ATR(denominator).
+
+        Examples:
+            atr_ratio_4h_1h  = ratio(4H OHLC, 1H OHLC)
+            atr_ratio_1h_15m = ratio(1H OHLC, 15m OHLC)
         """
-        # 计算两个周期的ATR
-        short_atr = self.atr_calculator.calculate(short_df)
-        long_atr = self.atr_calculator.calculate(long_df)
-        
-        # 避免除零
-        if long_atr == 0:
+        num_atr = self.atr_calculator.calculate(numerator_df)
+        den_atr = self.atr_calculator.calculate(denominator_df)
+
+        if den_atr == 0:
             return 0.0
-        
-        # 计算比值
-        ratio = short_atr / long_atr
-        
-        return float(ratio)
+
+        return float(num_atr / den_atr)
     
     def calculate_momentum(self, df: pd.DataFrame) -> float:
         """

@@ -147,3 +147,97 @@ def test_detect_ignores_range_and_low_confidence(handler):
     assert rev["from_regime"] == 1
     assert rev["to_regime"] == 2
     assert rev["confirm_count"] == 2
+
+
+def test_dual_payload_sets_present_and_outlook(handler):
+    handler.redis_client.zrange.return_value = []
+    out = handler.publish_regime(
+        {
+            "timestamp": 500,
+            "inst_id": "ETH-USDT-SWAP",
+            "horizon_hours": 48,
+            "present": {
+                "regime": 1,
+                "regime_label": "TREND_UP",
+                "source": "rules",
+                "recommended_strategy": "default",
+            },
+            "outlook_48h": {
+                "regime": 3,
+                "regime_label": "RANGE",
+                "source": "model",
+                "confidence": 0.72,
+                "probabilities": {1: 0.2, 2: 0.08, 3: 0.72},
+            },
+            "derived": {"continues": False, "changes": True},
+            # flat legacy = outlook
+            "regime": 3,
+            "regime_label": "RANGE",
+            "confidence": 0.72,
+            "price": 2000,
+        }
+    )
+    assert out["updated_current"] is True
+    stored = json.loads(handler.redis_client.set.call_args[0][1])
+    assert stored["present"]["regime"] == 1
+    assert stored["outlook_48h"]["regime"] == 3
+    assert stored["derived"]["changes"] is True
+    zmember = list(handler.redis_client.zadd.call_args[0][1].keys())[0]
+    zobj = json.loads(zmember)
+    # zwin tracks present structure for UP↔DOWN reversal
+    assert zobj["regime"] == 1
+    assert zobj["outlook_regime"] == 3
+
+
+def test_transition_alert_requires_model_gate(handler):
+    handler.redis_client.zrange.return_value = []
+    handler.redis_client.get.return_value = None
+    payload = {
+        "timestamp": 600,
+        "inst_id": "ETH-USDT-SWAP",
+        "present": {"regime": 3, "regime_label": "RANGE", "source": "rules"},
+        "transition": {
+            "prediction": "CHANGE",
+            "changes": True,
+            "p_change": 0.8,
+            "threshold": 0.7,
+            "horizon_hours": 12,
+            "model_gate_passed": True,
+            "alert_eligible": True,
+        },
+        "derived": {
+            "changes": True,
+            "continues": False,
+            "p_change": 0.8,
+        },
+        "regime": 3,
+        "regime_label": "RANGE",
+        "price": 2000,
+    }
+    out = handler.publish_regime(payload)
+    assert out["transition_alerted"] is True
+    args, _kwargs = handler.redis_client.xadd.call_args
+    assert args[1]["type"] == "regime_change_risk"
+
+
+def test_transition_alert_blocked_when_gate_failed(handler):
+    handler.redis_client.zrange.return_value = []
+    payload = {
+        "timestamp": 601,
+        "inst_id": "ETH-USDT-SWAP",
+        "present": {"regime": 3, "regime_label": "RANGE"},
+        "transition": {
+            "prediction": "CHANGE",
+            "changes": True,
+            "p_change": 0.9,
+            "threshold": 0.7,
+            "model_gate_passed": False,
+            "alert_eligible": False,
+        },
+        "derived": {"changes": True, "continues": False, "p_change": 0.9},
+        "regime": 3,
+        "regime_label": "RANGE",
+    }
+    out = handler.publish_regime(payload)
+    assert out["transition_alerted"] is False
+    handler.redis_client.xadd.assert_not_called()

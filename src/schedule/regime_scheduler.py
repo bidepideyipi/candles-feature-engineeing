@@ -49,14 +49,18 @@ class RegimeScheduler:
                 payload = self.predict_regime()
                 if payload:
                     redis_meta = payload.get("redis") or {}
+                    present = payload.get("present") or {}
+                    transition = payload.get("transition") or {}
+                    derived = payload.get("derived") or {}
                     logger.info(
-                        "regime=%s strategy=%s confidence=%s reversal_alerted=%s",
-                        payload.get("regime_label"),
-                        payload.get("recommended_strategy"),
-                        payload.get("confidence"),
+                        "present=%s transition=%s p_change=%s reversal_alerted=%s",
+                        present.get("regime_label"),
+                        transition.get("prediction")
+                        or ("CHANGE" if derived.get("changes") else "CONTINUE"),
+                        derived.get("p_change"),
                         redis_meta.get("reversal_alerted"),
                     )
-                    # 仅趋势反转告警时发邮件（与 Stream XADD 一致）
+                    # Email only on trend reversal alerts (same as Stream XADD)
                     if redis_meta.get("reversal_alerted"):
                         rev = redis_meta.get("reversal") or {}
                         try:
@@ -67,11 +71,15 @@ class RegimeScheduler:
                                         f"REVERSAL {rev.get('from_regime_label')}→"
                                         f"{rev.get('to_regime_label')}"
                                     ),
-                                    "prediction": payload.get("regime"),
+                                    "prediction": present.get("regime")
+                                    or payload.get("regime"),
                                     "probabilities": payload.get("probabilities"),
                                     "inst_id": payload.get("inst_id"),
                                     "price": payload.get("price"),
                                     "bar": "REGIME_REVERSAL",
+                                    "present": present,
+                                    "transition": transition,
+                                    "derived": derived,
                                 },
                             )
                         except Exception as e:

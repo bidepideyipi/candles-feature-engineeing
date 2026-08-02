@@ -35,25 +35,26 @@ SCHEDULE_ENABLED=true
 SCHEDULE_INTERVAL=12          # 分钟
 SCHEDULE_RECIPIENT=...@qq.com
 SCHEDULE_DATA_SOURCE=mongodb  # 或 api
-PRODUCTION_MODE=false         # true 时多数训练/拉取接口 403
+PRODUCTION_MODE=false         # OKX proxy skip in production; API not blocked
 ```
 
 ### 2.2 现有 HTTP 接口（n8n 调用清单）
 
-| 用途 | Method | Path | 生产可用 |
-|------|--------|------|----------|
-| 健康检查 | GET | `/health` | ✅ |
-| Regime 预测 | GET | `/regime/3-predict?from_local=true` | ✅ |
-| 统计（含各周期 K 线数量） | GET | `/regime/0-stats` | ✅ |
-| 一键训练流水线 | GET | `/regime/pipeline` | ❌（`PRODUCTION_MODE` 下 403） |
-| 分步：拉 K 线 | GET | `/regime/pull-history` | ❌ |
-| 分步：连续性 | GET | `/regime/check-continuity` | ❌ |
-| 分步：regime 标注 | GET | `/regime/1-label` | ❌ |
-| 分步：regime 训练 | GET | `/regime/2-train` | ❌ |
+| 用途 | Method | Path | 说明 |
+|------|--------|------|------|
+| 健康检查 | GET | `/health` | |
+| Regime 预测 | GET | `/regime/3-predict?from_local=true` | |
+| 统计（含各周期 K 线数量） | GET | `/regime/0-stats` | |
+| 一键训练流水线 | GET | `/regime/pipeline` | |
+| 分步：拉 K 线 | GET | `/regime/pull-history` | |
+| 分步：连续性 | GET | `/regime/check-continuity` | |
+| 分步：K 线→特征 | GET | `/regime/merge-features` | 原 `/fetch/3-merge-feature` |
+| 分步：regime 标注 | GET | `/regime/1-label` | |
+| 分步：regime 训练 | GET | `/regime/2-train` | |
 
-> 已删除整个 `/fetch/*`（含 `5-predict`、`3-merge-feature`、`4-lable`、`2-normalize`、`0-history-count`、`1-pull-history`）。特征合并仅在 `/regime/pipeline` 内部执行。
+> 已删除整个 `/fetch/*`（含 `5-predict`、`3-merge-feature`、`4-lable`、`2-normalize`、`0-history-count`、`1-pull-history`）。特征合并请用 `/regime/merge-features`（或一键 `/regime/pipeline`）。
 
-**重要：** 训练/补数相关接口在 `PRODUCTION_MODE=true` 时禁用（当前 `docker-compose.centos.yml` 即为此配置）。运维流水线需对接 **开发/训练实例**（`PRODUCTION_MODE=false`），或单独部署一个仅内网可达的 training API。
+训练/补数可直接打同一 API 实例（不再因 `PRODUCTION_MODE` 返回 403）。
 
 ### 2.3 预测响应字段（告警 IF 用）
 
@@ -86,28 +87,20 @@ PRODUCTION_MODE=false         # true 时多数训练/拉取接口 403
                     │  :5678                      │
                     └──────────────┬──────────────┘
                                    │ HTTP
-           ┌───────────────────────┼───────────────────────┐
-           ▼                       ▼                       ▼
-   ┌───────────────┐     ┌─────────────────┐     ┌─────────────────┐
-   │ API 生产实例   │     │ API 训练实例     │     │ 飞书 / 邮件      │
-   │ PRODUCTION=   │     │ PRODUCTION=     │     │ Webhook / SMTP  │
-   │ true          │     │ false           │     └─────────────────┘
-   │ /health       │     │ /regime/pipeline│
-   │ /regime/3-    │     │ /regime/pull-   │
-   │   predict     │     │   history       │
-   │ /regime/0-    │     └─────────────────┘
-   │   stats       │
-   └───────┬───────┘
-           │
-     MongoDB / Redis / models/
+                                   ▼
+                    ┌─────────────────────────────┐     ┌─────────────────┐
+                    │ API (:8000)                 │────▶│ 飞书 / 邮件      │
+                    │ /health /regime/*           │     │ Webhook / SMTP  │
+                    └──────────────┬──────────────┘     └─────────────────┘
+                                   │
+                             MongoDB / Redis / models/
 ```
 
 推荐环境变量约定（n8n 侧）：
 
 | 变量 | 含义 | 示例 |
 |------|------|------|
-| `TA_API_PROD` | 生产 API Base URL | `http://127.0.0.1:8000` |
-| `TA_API_TRAIN` | 训练 API Base URL | `http://127.0.0.1:8001` |
+| `TA_API_BASE` | API Base URL | `http://127.0.0.1:8000` |
 | `TA_ALERT_EMAIL` | 告警收件人 | 与 `SCHEDULE_RECIPIENT` 一致 |
 | `FEISHU_WEBHOOK_URL` | 飞书群机器人 Webhook（推荐） | `https://open.feishu.cn/open-apis/bot/v2/hook/...` |
 
@@ -166,7 +159,7 @@ SCHEDULE_ENABLED=false
 | 1. Cron | Schedule | 例：每 12 分钟 `*/12 * * * *` |
 | 2. HTTP GET | | `.../regime/3-predict?from_local=true` |
 | 3. IF | | `confidence >= 0.65` |
-| 4. 飞书/邮件 | | 含 `regime_label`、`recommended_strategy`、`confidence`、`price` |
+| 4. 飞书/邮件 | | 含 `present.regime_label`、`transition.p_change`、`transition.alert_eligible`、`price` |
 
 ### 5.2 迁移步骤（调度）
 
@@ -185,7 +178,7 @@ SCHEDULE_ENABLED=false
 
 ## 6. 功能 2：编排训练流水线
 
-训练一律打 **`TA_API_TRAIN`（PRODUCTION_MODE=false）**。
+训练与预测可打同一 **`TA_API_BASE`**（不再区分 PRODUCTION 403）。
 
 ### 6.1 方案 A：一键流水线（推荐起步）
 
@@ -194,7 +187,7 @@ SCHEDULE_ENABLED=false
 | 节点 | 配置 |
 |------|------|
 | Manual Trigger / Cron（如每周日 03:00） | — |
-| HTTP GET | `{{$env.TA_API_TRAIN}}/regime/pipeline?inst_id=ETH-USDT-SWAP&max_records_1h=2400&strict_continuity=true` |
+| HTTP GET | `{{$env.TA_API_BASE}}/regime/pipeline?inst_id=ETH-USDT-SWAP&max_records_1h=2400&strict_continuity=true` |
 | Timeout | 1800000 ms（30 min）起，按数据量加大 |
 | IF | `$json.success === true` |
 | 成功 → 飞书 | 摘要：`summary` / `elapsed_seconds` / accuracy 等 |
@@ -212,23 +205,62 @@ SCHEDULE_ENABLED=false
 
 **Workflow：`WF-Regime-Pipeline-Steps`**
 
+实际 n8n 画布示意（并行拉多周期 → Merge Combine/Position → Continuity → Label → Train；Merge 后为 **1 item**）：
+
+![n8n regime pipeline steps](./n8n_regime_pipeline_steps.png)
+
+节点结构：
+
+```
+Schedule Trigger
+  ├─ GET /regime/pull-history?bar=4H&...   → Merge Input 1
+  ├─ GET /regime/pull-history?bar=1H&...   → Merge Input 2
+  ├─ GET /regime/pull-history?bar=1D&...   → Merge Input 3
+  └─ GET /regime/pull-history?bar=15m&...  → Merge Input 4
+        ↓
+      Merge
+        Mode: Combine
+        Combine By: Position
+        Number of Inputs: 4
+        ↓  (1 item)
+      GET /regime/check-continuity
+        ↓
+      GET /regime/merge-features?limit=5000
+        ↓
+      GET /regime/1-label
+        ↓
+      GET /regime/2-train
+```
+
+**Merge 参数（与上图一致）：**
+
+| 参数 | 值 |
+|------|-----|
+| Mode | `Combine` |
+| Combine By | `Position` |
+| Number of Inputs | `4` |
+
+每路 pull 成功返回 1 条时，Combine by Position 对齐后输出 **1 item**，后续 Continuity / merge-features / Label / Train 各执行一次。
+
+> n8n 的 Merge 节点只合并 4 路 pull 结果；**特征合并**是下一步 `GET /regime/merge-features`（candlesticks → Mongo features）。也可一键 `/regime/pipeline`。
+
+等价文字流程：
+
 ```
 Manual/Cron
-  → GET /regime/pull-history?bar=1D&max_records=...
-  → GET /regime/pull-history?bar=4H&...
-  → GET /regime/pull-history?bar=1H&...
-  → GET /regime/pull-history?bar=15m&...
+  → 并行 GET /regime/pull-history（4H / 1H / 1D / 15m）
+  → Merge（Combine + Position，4 inputs）→ 1 item
   → GET /regime/check-continuity?inst_id=ETH-USDT-SWAP
   → IF continuity.ok
-       → GET /regime/pipeline?skip_pull=true   # 内部 merge→label→train
+       → GET /regime/merge-features?limit=5000
+       → GET /regime/1-label?only_fix_none=true
+       → GET /regime/2-train?limit=10000&test_ratio=0.2
        → 飞书成功摘要
      ELSE
-       → 飞书失败（缺口详情）→ 可选 Wait 人工确认后补数或 skip_pull 重跑
+       → 飞书失败（缺口详情）→ 可选 Wait 人工确认后补数
 ```
 
-> 已无独立 merge HTTP；需要 merge 时用 `/regime/pipeline`（可 `skip_pull=true`）。
-
-与代码流水线一致：`pull → continuity → merge → label → train`（见 `RegimePipeline`）。
+与代码流水线一致：`pull → continuity → merge-features → label → train`（见 `RegimePipeline`）。
 
 **分步超时建议：**
 
@@ -236,9 +268,10 @@ Manual/Cron
 |------|----------------|
 | 单周期 pull | 5–15 min |
 | check-continuity | 1–2 min |
-| merge-feature | 10–30 min |
+| merge-features | 10–30 min |
 | label | 5–15 min |
 | train | 5–20 min |
+| pipeline（skip_pull） | 10–30 min |
 
 ### 6.3 人工确认接入（与功能 3 联动）
 
@@ -306,7 +339,7 @@ Wait 超时（如 24h）默认 **Reject**，避免悬挂执行占用。
 | 节点 | 配置 |
 |------|------|
 | Cron | 每 5 分钟 |
-| HTTP GET | `{{$env.TA_API_PROD}}/health` |
+| HTTP GET | `{{$env.TA_API_BASE}}/health` |
 | IF | `status !== 'healthy'` 或非 2xx |
 | 飞书 | `[Ops] API health failed` + 状态码/响应 |
 
@@ -314,7 +347,7 @@ Wait 超时（如 24h）默认 **Reject**，避免悬挂执行占用。
 
 ### 8.2 Workflow：`WF-Ops-Backfill`（补数）
 
-仅打 **训练实例**。
+打同一 API 实例即可。
 
 ```
 Manual Trigger（或 Cron 日频）
@@ -346,7 +379,7 @@ Manual Trigger（或 Cron 日频）
 ```
 Webhook / Manual
   → GET /health                              # 期望 200 + healthy
-  → GET /regime/3-predict?from_local=true    # 期望含 regime / confidence
+  → GET /regime/3-predict?from_local=true    # 期望含 present / transition.p_change
   → GET /regime/0-stats                      # 期望含 candlestick_counts
   → IF 全部成功 → 飞书「Smoke OK」
     ELSE → 飞书「Smoke FAIL」+ 失败步骤（阻断放量）
@@ -368,7 +401,7 @@ curl -X POST "$N8N_SMOKE_WEBHOOK_URL"
 | P0 | 安装 n8n（Node 20+）、配 `TA_API_*`、飞书 Webhook | UI 可打开，手动 HTTP 通 |
 | P1 | `WF-Predict-Regime`（先不关旧 regime 调度） | 结果与旧调度一致 |
 | P2 | `SCHEDULE_ENABLED=false` | 仅 n8n 触发，无双发 |
-| P3 | `WF-Regime-Pipeline-OneShot` + 失败告警 | 训练实例跑通，飞书有摘要 |
+| P3 | `WF-Regime-Pipeline-OneShot` + 失败告警 | pipeline 跑通，飞书有摘要 |
 | P4 | Health + Smoke + Backfill + 审批 Wait | 运维可脱离手工 curl |
 
 ---
@@ -391,8 +424,7 @@ curl -X POST "$N8N_SMOKE_WEBHOOK_URL"
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - WEBHOOK_URL=http://localhost:5678/
-      - TA_API_PROD=http://host.docker.internal:8000
-      - TA_API_TRAIN=http://host.docker.internal:8001
+      - TA_API_BASE=http://host.docker.internal:8000
       # - FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
     volumes:
       - n8n_data:/home/node/.n8n
@@ -402,13 +434,13 @@ curl -X POST "$N8N_SMOKE_WEBHOOK_URL"
 
 - Linux 上 `host.docker.internal` 可能需 `extra_hosts`。
 - 关闭 API 容器内 `SCHEDULE_ENABLED`，改由 n8n Cron。
-- 训练实例建议另容器 `PRODUCTION_MODE=false`，**勿对公网暴露**。
+- 训练/拉取接口已开放；**勿将 API 对公网裸露**，用内网或反向代理鉴权。
 
 ---
 
 ## 11. 安全与权限
 
-1. **训练 API 仅内网**；生产 `PRODUCTION_MODE=true` 继续挡住 pull/train。
+1. API 与 n8n 尽量仅内网可达；需要外网时加网关鉴权。
 2. n8n 编辑器加基础鉴权（`N8N_BASIC_AUTH_ACTIVE` 等，以官方文档为准）。
 3. 飞书 Webhook、SMTP、API 地址放 n8n Credentials / 环境变量，勿写进导出的 workflow JSON 明文仓库。
 4. Wait 审批链接视作敏感能力，限制可 Resume 的用户。
@@ -431,7 +463,7 @@ curl -X POST "$N8N_SMOKE_WEBHOOK_URL"
 - [ ] `GET /health`、`/regime/3-predict`、`/regime/0-stats` 从 n8n 可调通  
 - [ ] 价格 / regime 两个 Cron workflow 有执行历史  
 - [ ] 置信度告警与预期阈值一致，无双发（旧调度已关）  
-- [ ] 训练实例上 `/regime/pipeline` 成功/失败均有飞书  
+- [ ] `/regime/pipeline` 成功/失败均有飞书  
 - [ ] Health 失败可告警；Smoke 覆盖预测两接口  
 - [ ] 文档中的回滚步骤演练一次  
 

@@ -113,7 +113,7 @@ class TestRegimePipelinePlan:
                     "test_period": {"from_ts": 1, "to_ts": 2},
                     "feature_columns": ["a", "b"],
                     "classification_report": {
-                        "TREND_UP": {
+                        "CHANGE": {
                             "precision": 0.7,
                             "recall": 0.8,
                             "f1-score": 0.75,
@@ -130,5 +130,5 @@ class TestRegimePipelinePlan:
         assert summary["accuracy"] == 0.8
         assert summary["continuity_ok"] is True
         assert summary["regime_distribution"]["RANGE"] == 30
-        assert summary["per_class"]["TREND_UP"]["f1"] == 0.75
+        assert summary["per_class"]["CHANGE"]["f1"] == 0.75
         assert summary["macro_f1"] == 0.7

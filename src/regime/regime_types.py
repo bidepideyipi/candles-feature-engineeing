@@ -20,7 +20,10 @@ REGIME_STRATEGY = {
 }
 
 REGIME_DESCRIPTION = {
-    MarketRegime.TREND_UP: "上升趋势 → Default 趋势做多",
-    MarketRegime.TREND_DOWN: "下降趋势 → Default 做空/观望",
-    MarketRegime.RANGE: "震荡 → Grid 网格",
+    MarketRegime.TREND_UP: "Uptrend structure → trend-following long bias",
+    MarketRegime.TREND_DOWN: "Downtrend structure → short / defensive bias",
+    MarketRegime.RANGE: "Range structure → grid / mean-reversion bias",
 }
+
+REGIME_HORIZON_HOURS_DEFAULT = 48
+MS_PER_HOUR = 60 * 60 * 1000

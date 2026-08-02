@@ -19,7 +19,6 @@ from collect.okex_fetcher import okex_fetcher
 from feature.feature_merge import FeatureMerge
 from models.regime_trainer import regime_trainer
 from regime.regime_labeler import RegimeLabeler
-from regime.regime_types import REGIME_LABELS, MarketRegime
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class RegimePipeline:
         max_records_1h: int = 2400,
         skip_pull: bool = False,
         strict_continuity: bool = True,
-        merge_limit: int = 5000,
+        merge_limit: int = 20000,
         label_limit: int = 50000,
         only_fix_none_label: bool = True,
         train_limit: int = 10000,
@@ -238,9 +237,8 @@ class RegimePipeline:
     ) -> Dict[str, Any]:
         report = train_result.get("classification_report") or {}
         per_class = {}
-        for regime in MarketRegime:
-            name = REGIME_LABELS[regime]
-            metrics = report.get(name) or report.get(str(int(regime) - 1))
+        for name in ("CONTINUE", "CHANGE"):
+            metrics = report.get(name)
             if isinstance(metrics, dict):
                 per_class[name] = {
                     "precision": round(float(metrics.get("precision", 0)), 4),
@@ -257,10 +255,42 @@ class RegimePipeline:
             "features_in_db": merge_result.get("features_in_db")
             or feature_handler.count_features(inst_id=inst_id, bar="1H"),
             "regime_labeled": label_result.get("labeled_after"),
+            "regime_48h_labeled": label_result.get("labeled_48h_after"),
+            "regime_now_distribution": label_result.get("regime_now_distribution")
+            or label_result.get("regime_distribution"),
+            "regime_48h_distribution": label_result.get("regime_48h_distribution"),
             "regime_distribution": label_result.get("regime_distribution"),
+            "target": train_result.get("target"),
+            "horizon_hours": train_result.get("horizon_hours"),
             "accuracy": train_result.get("accuracy"),
+            "always_continue_baseline": train_result.get("always_continue_baseline"),
+            "beats_always_continue": train_result.get("beats_always_continue"),
+            "roc_auc": train_result.get("roc_auc"),
+            "pr_auc": train_result.get("pr_auc"),
+            "brier_score": train_result.get("brier_score"),
+            "change_precision": train_result.get("change_precision"),
+            "gate_passed": train_result.get("gate_passed"),
+            "change_threshold": train_result.get("change_threshold"),
+            "regime_policies": {
+                name: {
+                    "threshold": policy.get("threshold"),
+                    "alert_enabled": policy.get("alert_enabled"),
+                    "gate_passed": policy.get("gate_passed"),
+                    "holdout_gate_passed": policy.get("holdout_gate_passed"),
+                }
+                for name, policy in (train_result.get("regime_policies") or {}).items()
+            },
+            "persistence_baseline_accuracy": train_result.get(
+                "persistence_baseline_accuracy"
+            ),
+            "beats_persistence": train_result.get("beats_persistence"),
+            "majority_baseline_accuracy": train_result.get(
+                "majority_baseline_accuracy"
+            ),
+            "beats_majority": train_result.get("beats_majority"),
             "train_size": train_result.get("train_size"),
-            "test_size": train_result.get("test_size"),
+            "test_size": train_result.get("holdout_size")
+            or train_result.get("test_size"),
             "test_period": train_result.get("test_period"),
             "feature_columns_count": len(train_result.get("feature_columns") or []),
             "per_class": per_class,

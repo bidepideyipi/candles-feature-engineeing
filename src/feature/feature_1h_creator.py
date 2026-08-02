@@ -43,13 +43,17 @@ class Feature1HCreator(BaseTechnicalCalculator):
         #print(f"DEBUG 1H初始化: atr_ratio_calculator={self.atr_ratio_calculator}, rsi_divergence_calculator={self.rsi_divergence_calculator}")
         
         
-    def calculate(self, candles1h: List[Dict[str, Any]]) -> Feature1H:
+    def calculate(
+        self,
+        candles1h: List[Dict[str, Any]],
+        candles15m: List[Dict[str, Any]] = None,
+    ) -> Feature1H:
         """
-            处理一小时的特征参数
+        处理一小时的特征参数。
+
         Args:
-            candles (List[Dict[str, Any]]): 48条数据（因为macd慢线需要48的时间窗口）
-            Returns:
-            Feature1H: 1小时特征对象
+            candles1h: ≥48 根 1H
+            candles15m: 对齐的 15m 序列；用于 atr_ratio_1h_15m = ATR(1H)/ATR(15m)
         """
         close1h = pd.Series(item['close'] for item in candles1h)
         volume1h = pd.Series(item['volume'] for item in candles1h)
@@ -99,20 +103,28 @@ class Feature1HCreator(BaseTechnicalCalculator):
             pd.Series(item['close'] for item in candles1h)
         )
         
-        # 20260604 新增特征 - 构建OHLC DataFrame
-        ohlc_df = pd.DataFrame(candles1h)
-        try:
-            atr_ratio_1h_15m = round(self.atr_ratio_calculator.calculate(ohlc_df), 2)
-            #print(f"DEBUG 1H ATR比值计算成功: {atr_ratio_1h_15m}")
-        except Exception as e:
-            #print(f"DEBUG 1H ATR比值计算失败: {e}")
-            atr_ratio_1h_15m = 0.0
+        atr_ratio_1h_15m = 0.0
+        if candles15m:
+            try:
+                df_15m = pd.DataFrame(
+                    {
+                        "high": [c["high"] for c in candles15m],
+                        "low": [c["low"] for c in candles15m],
+                        "close": [c["close"] for c in candles15m],
+                    }
+                )
+                atr_ratio_1h_15m = round(
+                    self.atr_ratio_calculator.calculate_cross_timeframe_ratio(
+                        df, df_15m
+                    ),
+                    2,
+                )
+            except Exception:
+                atr_ratio_1h_15m = 0.0
         
         try:
             rsi_divergence_1h = self.rsi_divergence_calculator.calculate(close1h)
-            #print(f"DEBUG 1H RSI背离计算成功: {rsi_divergence_1h}")
-        except Exception as e:
-            #print(f"DEBUG 1H RSI背离计算失败: {e}")
+        except Exception:
             rsi_divergence_1h = 0
         
         return Feature1H(

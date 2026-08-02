@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from bisect import bisect_left
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+
 from feature.feature_1h_creator import Feature1HCreator
 from feature.feature_15m_creator import Feature15mCreator
 from feature.feature_4h_creator import Feature4HCreator
@@ -16,10 +18,21 @@ from utils.normalize_encoder import NORMALIZED
 
 log = logging.getLogger(__name__)
 
-# TODO 合并特征太慢了6到7秒100条, 2万条大概20分钟
+MS_15M = 15 * 60 * 1000
+MS_1H = 60 * 60 * 1000
+MS_4H = 4 * MS_1H
+MS_1D = 24 * MS_1H
+
+
 class FeatureMerge:
-    
-    def __init__(self, batch_size: int = 100):
+    """
+    Candlesticks → 1H feature rows.
+
+    Bulk path (default in loop): one Mongo range load per bar, then in-memory
+    sliding windows. Avoids ~4 DB round-trips per row (dominant cost at 20k).
+    """
+
+    def __init__(self, batch_size: int = 500):
         self.inst_id = "ETH-USDT-SWAP"
         self.batch_size = batch_size
         self._batch_cache: List[Feature] = []
@@ -52,18 +65,22 @@ class FeatureMerge:
         except ValueError as e:
             log.warning("滚动归一化失败: %s", e)
             return None
-    
+
     def _fetch_candles(self, bar: str, limit: int, before: Optional[int]) -> List[Dict[str, Any]]:
-        """拉取 K 线并转为时间正序。before 为空时取最近 limit 根。"""
+        """Fetch completed candles only and return ascending time order."""
+        fetch_limit = limit + 2  # margin for a current unconfirmed candle
         if before is None:
             raw = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar=bar, limit=limit, sort_desc=True
+                inst_id=self.inst_id, bar=bar, limit=fetch_limit, sort_desc=True
             )
         else:
             raw = candlestick_handler.get_candlestick_data(
-                inst_id=self.inst_id, bar=bar, limit=limit, before=before
+                inst_id=self.inst_id, bar=bar, limit=fetch_limit, before=before
             )
-        return raw[::-1] if raw else []
+        completed = [
+            row for row in (raw or []) if int(row.get("confirm", 1)) == 1
+        ]
+        return list(reversed(completed[:limit]))
 
     def _resolve_initial_before(self, before: Optional[int]) -> Optional[int]:
         """从最新 1H K 线起点往历史回溯；无 K 线则返回 None。"""
@@ -73,11 +90,63 @@ class FeatureMerge:
         if latest is None:
             return None
         # 包含最新一根 1H
-        return latest + 60 * 60 * 1000
+        return latest + MS_1H
+
+    @staticmethod
+    def _window_before(
+        series: List[Dict[str, Any]],
+        timestamps: List[int],
+        before_excl: int,
+        n: int,
+    ) -> List[Dict[str, Any]]:
+        """Last n candles with timestamp < before_excl (series ascending)."""
+        if n <= 0 or not series:
+            return []
+        idx = bisect_left(timestamps, before_excl)
+        start = max(0, idx - n)
+        return series[start:idx]
+
+    def _prefetch_ranges(
+        self, cursor_before: int, limit: int
+    ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[int]], Optional[str]]:
+        """
+        One range query per bar covering lookback + `limit` 1H steps.
+        """
+        fw = self.feature_window
+        lookback_ms = max(
+            self.rolling_norm_window * MS_1H,
+            fw * MS_15M,
+            fw * MS_4H,
+            fw * MS_1D,
+        )
+        # Extra day of margin for alignment edge cases
+        start_ts = int(cursor_before) - int(limit) * MS_1H - lookback_ms - MS_1D
+        end_ts = int(cursor_before)
+
+        series: Dict[str, List[Dict[str, Any]]] = {}
+        ts_index: Dict[str, List[int]] = {}
+        for bar in ("1H", "15m", "4H", "1D"):
+            rows = candlestick_handler.get_candlestick_range(
+                self.inst_id, bar, start_ts, end_ts
+            )
+            if not rows:
+                return {}, {}, f"prefetch empty for {bar} in [{start_ts}, {end_ts})"
+            series[bar] = rows
+            ts_index[bar] = [int(r["timestamp"]) for r in rows]
+            log.info(
+                "prefetch %s: %s candles [%s, %s)",
+                bar,
+                len(rows),
+                rows[0]["timestamp"],
+                end_ts,
+            )
+        return series, ts_index, None
 
     def loop(self, before: int = None, limit: int = 5000) -> Dict[str, Any]:
         """
-        循环合并特征，从最近时间点向历史回溯。
+        Merge features walking backward from latest (or `before`).
+
+        Uses bulk prefetch + in-memory windows (not per-row Mongo fetches).
         """
         stats: Dict[str, Any] = {
             "processed": 0,
@@ -86,6 +155,7 @@ class FeatureMerge:
             "before_used": None,
             "last_error": None,
             "candle_counts": {},
+            "mode": "bulk_prefetch",
         }
 
         cursor_before = self._resolve_initial_before(before)
@@ -103,30 +173,204 @@ class FeatureMerge:
             "1D": candlestick_handler.count(self.inst_id, "1D"),
         }
 
+        series, ts_index, pref_err = self._prefetch_ranges(cursor_before, limit)
+        if pref_err:
+            stats["last_error"] = pref_err
+            return stats
+
+        fw = self.feature_window
+        rn = self.rolling_norm_window
+        ts_1h = ts_index["1H"]
+        # Select the latest `limit` targets, then calculate oldest → newest so
+        # lag/delta features can use already-produced rows without future data.
+        end_idx = bisect_left(ts_1h, cursor_before)
+        start_idx = max(0, end_idx - limit)
+        targets = ts_1h[start_idx:end_idx]
+        history = (
+            feature_handler.get_feature_history(
+                self.inst_id, before=targets[0], bar="1H", limit=24
+            )
+            if targets
+            else []
+        )
+
         n = 0
+        skipped_invalid = 0
         try:
-            while cursor_before is not None and n < limit:
-                try:
-                    result, err = self._process_and_cache(before=cursor_before)
-                    if result is not None:
-                        cursor_before = result
-                        n += 1
-                    else:
-                        stats["last_error"] = err or "未知原因，见服务日志"
-                        break
-                except Exception as e:
-                    log.error(f"处理特征时发生错误: {e}", exc_info=True)
-                    stats["last_error"] = str(e)
+            for target_ts in targets:
+                if n >= limit:
                     break
+                before_excl = int(target_ts) + MS_1H
+                candles1H = self._window_before(
+                    series["1H"], ts_index["1H"], before_excl, rn
+                )
+                candles15m = self._window_before(
+                    series["15m"], ts_index["15m"], before_excl, fw
+                )
+                candles4H = self._window_before(
+                    series["4H"], ts_index["4H"], before_excl, fw
+                )
+                candles1D = self._window_before(
+                    series["1D"], ts_index["1D"], before_excl, fw
+                )
+
+                if (
+                    len(candles1H) < fw
+                    or len(candles15m) < fw
+                    or len(candles4H) < fw
+                    or len(candles1D) < fw
+                ):
+                    skipped_invalid += 1
+                    log.warning(
+                        "skip insufficient feature window ts=%s "
+                        "1H=%s 15m=%s 4H=%s 1D=%s",
+                        target_ts,
+                        len(candles1H),
+                        len(candles15m),
+                        len(candles4H),
+                        len(candles1D),
+                    )
+                    continue
+
+                features = self._common_process(
+                    candles1H=candles1H,
+                    candles15m=candles15m,
+                    candles4H=candles4H,
+                    candles1D=candles1D,
+                    history=history,
+                )
+                if not features:
+                    skipped_invalid += 1
+                    log.warning(
+                        "bulk merge skipped invalid ts=%s "
+                        "(alignment/continuity/normalization)",
+                        target_ts,
+                    )
+                    continue
+
+                self._batch_cache.append(features)
+                history.append(features.to_dict())
+                history = history[-24:]
+                if len(self._batch_cache) >= self.batch_size:
+                    self._flush_batch()
+                n += 1
+        except Exception as e:
+            log.error("处理特征时发生错误: %s", e, exc_info=True)
+            stats["last_error"] = str(e)
         finally:
             if self._batch_cache:
                 self._flush_batch()
 
         stats["processed"] = n
+        stats["skipped_invalid"] = skipped_invalid
         stats["success"] = n > 0
         if n == 0 and stats["last_error"] is None:
             stats["last_error"] = "首条 feature 校验未通过"
         return stats
+
+    @staticmethod
+    def _safe_delta(
+        current: Dict[str, Any],
+        history: List[Dict[str, Any]],
+        field: str,
+        lag: int,
+    ) -> float:
+        if len(history) < lag:
+            return 0.0
+        try:
+            return round(
+                float(current.get(field) or 0)
+                - float(history[-lag].get(field) or 0),
+                6,
+            )
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _safe_return(
+        current_price: float,
+        history: List[Dict[str, Any]],
+        lag: int,
+    ) -> float:
+        if len(history) < lag:
+            return 0.0
+        try:
+            old = float(history[-lag].get("price") or 0)
+            return round((float(current_price) / old) - 1.0, 6) if old else 0.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+
+    def _enrich_transition_features(
+        self,
+        feature: Feature,
+        history: List[Dict[str, Any]],
+    ) -> Feature:
+        """Add lagged transition features using only rows strictly before T."""
+        from regime.regime_labeler import RegimeLabeler
+
+        current = feature.to_dict()
+        feature.price_return_1h = self._safe_return(feature.price, history, 1)
+        feature.price_return_4h = self._safe_return(feature.price, history, 4)
+        feature.price_return_12h = self._safe_return(feature.price, history, 12)
+
+        feature.adx_4h_delta_3h = self._safe_delta(current, history, "adx_4h", 3)
+        feature.adx_4h_delta_6h = self._safe_delta(current, history, "adx_4h", 6)
+        feature.adx_4h_delta_12h = self._safe_delta(current, history, "adx_4h", 12)
+        feature.di_spread_4h = round(feature.plus_di_4h - feature.minus_di_4h, 6)
+        if len(history) >= 6:
+            old_spread = float(history[-6].get("plus_di_4h") or 0) - float(
+                history[-6].get("minus_di_4h") or 0
+            )
+            feature.di_spread_4h_delta_6h = round(
+                feature.di_spread_4h - old_spread, 6
+            )
+        feature.macd_histogram_4h_delta_6h = self._safe_delta(
+            current, history, "macd_histogram_4h", 6
+        )
+        feature.ema_gap_4h = round(feature.ema_12_4h - feature.ema_26_4h, 6)
+        if len(history) >= 6:
+            old_gap = float(history[-6].get("ema_12_4h") or 0) - float(
+                history[-6].get("ema_26_4h") or 0
+            )
+            feature.ema_gap_4h_delta_6h = round(feature.ema_gap_4h - old_gap, 6)
+        feature.atr_ratio_4h_1h_delta_6h = self._safe_delta(
+            current, history, "atr_ratio_4h_1h", 6
+        )
+        feature.rsi_14_1h_delta_6h = self._safe_delta(
+            current, history, "rsi_14_1h", 6
+        )
+        feature.bollinger_position_1d_delta_12h = self._safe_delta(
+            current, history, "bollinger_position_1d", 12
+        )
+
+        feature.adx_range_margin = round(feature.adx_4h - 18.0, 6)
+        feature.adx_trend_margin = round(feature.adx_4h - 20.0, 6)
+        feature.atr_ratio_range_margin = round(feature.atr_ratio_4h_1h - 2.0, 6)
+
+        signs = [
+            1 if feature.plus_di_4h > feature.minus_di_4h else -1,
+            1 if feature.ema_12_4h >= feature.ema_26_4h else -1,
+            1 if feature.macd_histogram_4h >= 0 else -1,
+            1 if feature.trend_continuation_4h >= 0 else -1,
+        ]
+        feature.rule_conflict_score = round(1.0 - abs(sum(signs)) / len(signs), 4)
+
+        labeler = RegimeLabeler()
+        regimes = [labeler.classify(row) for row in history[-24:]]
+        current_regime = labeler.classify(feature.to_dict())
+        sequence = regimes + [current_regime]
+        age = 1
+        for regime in reversed(sequence[:-1]):
+            if regime != current_regime:
+                break
+            age += 1
+        feature.regime_age_1h = age
+        feature.regime_switches_24h = sum(
+            int(a != b) for a, b in zip(sequence, sequence[1:])
+        )
+        feature.feature_schema_version = "transition_v1"
+        feature.dynamic_features_ready = len(history) >= 12
+        return feature
 
     async def process_async(self, before: int = None) -> int:
         """
@@ -280,6 +524,8 @@ class FeatureMerge:
         converted = []
         for candle in candles:
             try:
+                if len(candle) > 8 and int(candle[8]) != 1:
+                    continue
                 timestamp = int(candle[0])
                 dt = datetime.fromtimestamp(timestamp / 1000)
                 
@@ -290,6 +536,7 @@ class FeatureMerge:
                     "low": float(candle[3]),
                     "close": float(candle[4]),
                     "volume": float(candle[5]),
+                    "confirm": int(candle[8]) if len(candle) > 8 else 1,
                     "inst_id": self.inst_id,
                     "bar": bar,
                     "record_dt": dt.date(),
@@ -303,7 +550,14 @@ class FeatureMerge:
         
         return converted
         
-    def _common_process(self, candles1H: List[Dict[str, Any]], candles15m: List[Dict[str, Any]], candles4H: List[Dict[str, Any]], candles1D: List[Dict[str, Any]]) -> Optional[Feature]:
+    def _common_process(
+        self,
+        candles1H: List[Dict[str, Any]],
+        candles15m: List[Dict[str, Any]],
+        candles4H: List[Dict[str, Any]],
+        candles1D: List[Dict[str, Any]],
+        history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Feature]:
         if candles1H is None or candles15m is None or candles4H is None or candles1D is None:
             log.warning(f"获取数据失败, 1H: {candles1H}, 15m: {candles15m}, 4H: {candles4H}, 1D: {candles1D}")
             return None
@@ -395,9 +649,9 @@ class FeatureMerge:
             close_std=norm_params['std'],
         )
         
-        feature1h_result = feature1h.calculate(candles1H_ind)
+        feature1h_result = feature1h.calculate(candles1H_ind, candles15m)
         feature15m_result = feature15m.calculate(candles15m)
-        feature4h_result = feature4h.calculate(candles4H)
+        feature4h_result = feature4h.calculate(candles4H, candles1H_ind)
         feature1D_result = feature1D.calculate(candles1D)
         
         feature = Feature(
@@ -470,7 +724,11 @@ class FeatureMerge:
             macd_signal_1d=feature1D_result.macd_signal_1d,
         )
         
-        return feature
+        if history is None:
+            history = feature_handler.get_feature_history(
+                self.inst_id, before=feature.timestamp, bar="1H", limit=24
+            )
+        return self._enrich_transition_features(feature, history)
     
     def _process_and_cache(self, before: int = None):
         """

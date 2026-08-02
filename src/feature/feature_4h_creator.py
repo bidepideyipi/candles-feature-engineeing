@@ -39,13 +39,17 @@ class Feature4HCreator(BaseTechnicalCalculator):
         
         #print(f"DEBUG 4H初始化: atr_ratio_calculator={self.atr_ratio_calculator}, rsi_divergence_calculator={self.rsi_divergence_calculator}")
         
-    def calculate(self, candles4H: List[Dict[str, Any]]) -> Feature4H:
+    def calculate(
+        self,
+        candles4H: List[Dict[str, Any]],
+        candles1H: List[Dict[str, Any]] = None,
+    ) -> Feature4H:
         """
-            处理4小时的特征参数
+        处理4小时的特征参数。
+
         Args:
-            candles4H (List[Dict[str, Any]]): 48条数据（因为macd慢线需要48的时间窗口）
-            Returns:
-            Feature4H: 4小时特征对象
+            candles4H: ≥48 根 4H（MACD/EMA 窗口）
+            candles1H: 对齐的 1H 序列；用于 atr_ratio_4h_1h = ATR(4H)/ATR(1H)
         """
         close4H = pd.Series(item['close'] for item in candles4H)
         
@@ -86,19 +90,28 @@ class Feature4HCreator(BaseTechnicalCalculator):
             close_prices=df['close']
         )
         
-        # 20260604 新增特征 - 使用已有的OHLC DataFrame
-        try:
-            atr_ratio_4h_1h = round(self.atr_ratio_calculator.calculate(df), 2)
-            #print(f" ATR比值计算成功: {atr_ratio_4h_1h}")
-        except Exception as e:
-            #print(f"DEBUG 4H ATR比值计算失败: {e}")
-            atr_ratio_4h_1h = 0.0
+        atr_ratio_4h_1h = 0.0
+        if candles1H:
+            try:
+                df_1h = pd.DataFrame(
+                    {
+                        "high": [c["high"] for c in candles1H],
+                        "low": [c["low"] for c in candles1H],
+                        "close": [c["close"] for c in candles1H],
+                    }
+                )
+                atr_ratio_4h_1h = round(
+                    self.atr_ratio_calculator.calculate_cross_timeframe_ratio(
+                        df, df_1h
+                    ),
+                    2,
+                )
+            except Exception:
+                atr_ratio_4h_1h = 0.0
         
         try:
             rsi_divergence_4h = self.rsi_divergence_calculator.calculate(close4H)
-            #print(f"DEBUG 4H RSI背离计算成功: {rsi_divergence_4h}")
-        except Exception as e:
-            #print(f"DEBUG 4H RSI背离计算失败: {e}")
+        except Exception:
             rsi_divergence_4h = 0
         
         return Feature4H(

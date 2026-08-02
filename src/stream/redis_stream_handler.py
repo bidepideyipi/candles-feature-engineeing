@@ -62,6 +62,10 @@ class RedisStreamHandler:
     def _last_reversal_key(inst_id: str) -> str:
         return f"{config.REDIS_REGIME_LAST_REVERSAL_PREFIX}:{inst_id}"
 
+    @staticmethod
+    def _last_transition_key(inst_id: str) -> str:
+        return f"{config.REDIS_REGIME_LAST_REVERSAL_PREFIX}:transition:{inst_id}"
+
     def publish_regime(self, regime_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         1) SET 当前趋势到 regime:current:{inst_id}
@@ -76,6 +80,8 @@ class RedisStreamHandler:
             "window_size": 0,
             "reversal_detected": False,
             "reversal_alerted": False,
+            "transition_alerted": False,
+            "transition_stream_id": None,
             "stream_id": None,
             "reversal": None,
             "error": None,
@@ -93,34 +99,92 @@ class RedisStreamHandler:
                 logger.error("publish_regime: invalid timestamp in %s", regime_data)
                 return result
 
+            present = regime_data.get("present") or {}
+            outlook = (
+                regime_data.get("outlook_48h")
+                or regime_data.get("outlook")
+                or regime_data.get("transition")
+                or {}
+            )
+            derived = regime_data.get("derived") or {}
+
+            # Prefer explicit present; fall back to flat legacy fields
+            present_regime = int(
+                present.get("regime")
+                or regime_data.get("regime")
+                or 0
+            )
+            present_label = present.get("regime_label") or regime_data.get(
+                "regime_label", ""
+            )
+            # Transition model: confidence = P(change) when available
+            confidence = float(
+                derived.get("p_change")
+                if derived.get("p_change") is not None
+                else outlook.get("p_change")
+                if outlook.get("p_change") is not None
+                else outlook.get("confidence")
+                if outlook.get("confidence") is not None
+                else regime_data.get("confidence")
+                or 0
+            )
+            outlook_regime = int(
+                outlook.get("regime") or present_regime or regime_data.get("regime") or 0
+            )
+            outlook_label = outlook.get("regime_label") or outlook.get("prediction") or ""
+
             current_payload = {
                 "type": "regime",
                 "timestamp": ts,
                 "inst_id": inst_id,
                 "bar": regime_data.get("bar", "1H"),
-                "regime": int(regime_data.get("regime", 0)),
-                "regime_label": regime_data.get("regime_label", ""),
-                "recommended_strategy": regime_data.get("recommended_strategy", ""),
-                "confidence": float(regime_data.get("confidence", 0) or 0),
-                "probabilities": regime_data.get("probabilities", {}),
                 "price": regime_data.get("price"),
+                "horizon_hours": regime_data.get("horizon_hours"),
+                "present": present
+                or {
+                    "regime": present_regime,
+                    "regime_label": present_label,
+                    "source": "rules",
+                },
+                "transition": regime_data.get("transition") or outlook,
+                "outlook_48h": outlook
+                if outlook.get("regime") is not None
+                else None,
+                "derived": derived
+                or {
+                    "continues": present_regime == outlook_regime,
+                    "changes": present_regime != outlook_regime,
+                },
             }
+            # Drop null outlook_48h key noise
+            if current_payload.get("outlook_48h") is None:
+                current_payload.pop("outlook_48h", None)
 
-            # ---- 1. SET 当前趋势 ----
+            # ---- 1. SET dual-track snapshot ----
             current_key = self._current_key(inst_id)
-            self.redis_client.set(current_key, json.dumps(current_payload, ensure_ascii=False))
+            self.redis_client.set(
+                current_key, json.dumps(current_payload, ensure_ascii=False)
+            )
             result["updated_current"] = True
 
-            # ---- 2. ZADD 窗口 + 裁剪 ----
+            # ---- 2. ZADD window using PRESENT regime (structure now) ----
             zkey = self._zwin_key(inst_id)
             member = json.dumps(
                 {
                     "timestamp": ts,
-                    "regime": current_payload["regime"],
-                    "regime_label": current_payload["regime_label"],
-                    "confidence": current_payload["confidence"],
-                    "price": current_payload["price"],
-                    "recommended_strategy": current_payload["recommended_strategy"],
+                    "regime": present_regime,
+                    "regime_label": present_label,
+                    # Present regime is deterministic rules; do not gate reversal
+                    # detection with transition-model P(change).
+                    "confidence": 1.0,
+                    "p_change": confidence,
+                    "outlook_regime": outlook_regime,
+                    "outlook_label": outlook_label,
+                    "continues": current_payload["derived"].get("continues"),
+                    "price": current_payload.get("price"),
+                    "recommended_strategy": (present or {}).get(
+                        "recommended_strategy", ""
+                    ),
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -139,7 +203,38 @@ class RedisStreamHandler:
             window_points = self._parse_window_members(raw_members)
             result["window_size"] = len(window_points)
 
-            # ---- 3. 反转检测 → 条件 XADD ----
+            # ---- 3. Model transition alert: only after holdout gate passes ----
+            transition = current_payload.get("transition") or {}
+            if transition.get("alert_eligible"):
+                transition_id = f"{ts}:{transition.get('horizon_hours')}"
+                transition_key = self._last_transition_key(inst_id)
+                if self.redis_client.get(transition_key) != transition_id:
+                    transition_message = {
+                        "type": "regime_change_risk",
+                        "timestamp": str(ts),
+                        "inst_id": inst_id,
+                        "bar": str(current_payload.get("bar", "1H")),
+                        "horizon_hours": str(
+                            transition.get("horizon_hours") or ""
+                        ),
+                        "p_change": str(transition.get("p_change") or 0),
+                        "threshold": str(transition.get("threshold") or ""),
+                        "present": json.dumps(
+                            current_payload.get("present") or {},
+                            ensure_ascii=False,
+                        ),
+                        "transition": json.dumps(
+                            transition, ensure_ascii=False
+                        ),
+                    }
+                    transition_stream_id = self.redis_client.xadd(
+                        config.REDIS_REGIME_STREAM, transition_message
+                    )
+                    self.redis_client.set(transition_key, transition_id)
+                    result["transition_alerted"] = True
+                    result["transition_stream_id"] = transition_stream_id
+
+            # ---- 4. Present-regime reversal detection → conditional XADD ----
             reversal = self._detect_trend_reversal(window_points)
             if not reversal:
                 logger.info(
@@ -172,12 +267,11 @@ class RedisStreamHandler:
                 "to_regime_label": reversal["to_regime_label"],
                 "confirm_count": str(reversal["confirm_count"]),
                 "streak_start_ts": str(reversal["streak_start_ts"]),
-                "confidence": str(current_payload["confidence"]),
+                "confidence": str(confidence),
                 "price": str(current_payload.get("price") or ""),
-                "recommended_strategy": str(
-                    current_payload.get("recommended_strategy") or ""
-                ),
-                "probabilities": json.dumps(current_payload.get("probabilities") or {}),
+                "present": json.dumps(current_payload.get("present") or {}),
+                "transition": json.dumps(current_payload.get("transition") or {}),
+                "derived": json.dumps(current_payload.get("derived") or {}),
                 "current": json.dumps(current_payload, ensure_ascii=False),
             }
             stream = config.REDIS_REGIME_STREAM

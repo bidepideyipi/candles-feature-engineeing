@@ -64,6 +64,16 @@ class Config:
     MODEL_SAVE_PATH_LOW = os.getenv('MODEL_SAVE_PATH_LOW', 'models/xgboost_model_low.json')
     MODEL_SAVE_PATH_HIGH = os.getenv('MODEL_SAVE_PATH_HIGH', 'models/xgboost_model_high.json')
     REGIME_MODEL_SAVE_PATH = os.getenv('REGIME_MODEL_SAVE_PATH', 'models/regime_model.json')
+    # Forward label horizon for model target (1H bars ahead). Field name remains regime_48h.
+    REGIME_HORIZON_HOURS = int(os.getenv('REGIME_HORIZON_HOURS', '48'))
+    # XGBoost class imbalance: balanced | none
+    REGIME_CLASS_WEIGHT = os.getenv('REGIME_CLASS_WEIGHT', 'balanced').strip().lower()
+    # P(change) threshold for continue/change binary model
+    REGIME_CHANGE_THRESHOLD = float(os.getenv('REGIME_CHANGE_THRESHOLD', '0.5'))
+    REGIME_CHANGE_CONFIRM_BARS = int(os.getenv('REGIME_CHANGE_CONFIRM_BARS', '2'))
+    REGIME_CV_SPLITS = int(os.getenv('REGIME_CV_SPLITS', '3'))
+    REGIME_MIN_CHANGE_PRECISION = float(os.getenv('REGIME_MIN_CHANGE_PRECISION', '0.5'))
+    REGIME_HOLDOUT_START_TS = int(os.getenv('REGIME_HOLDOUT_START_TS', '0'))
     FEATURE_WINDOW_SIZE = int(os.getenv('FEATURE_WINDOW_SIZE', '300'))
     ROLLING_NORM_WINDOW = int(os.getenv('ROLLING_NORM_WINDOW', '168'))
     FEATURE_CANDLE_WINDOW = int(os.getenv('FEATURE_CANDLE_WINDOW', '48'))

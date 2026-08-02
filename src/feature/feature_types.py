@@ -37,7 +37,9 @@ class Feature1H(BaseModel):
     ema_cross_1h_26_48: int = Field(default=0, description="EMA 26/48 交叉信号")
     
     # 20260604 新增特征
-    atr_ratio_1h_15m: float = Field(default=0.0, description="1H/15分钟 ATR比值")
+    atr_ratio_1h_15m: float = Field(
+        default=0.0, description="ATR(1H)/ATR(15m) cross-timeframe ratio"
+    )
     rsi_divergence_1h: float = Field(default=0.0, description="1小时RSI背离信号")
     
     model_config = ConfigDict(extra="ignore")
@@ -80,7 +82,9 @@ class Feature4H(BaseModel):
     body_ratio_4h: float = Field(default=0.0, description="实体比例")
     
     # 20260604 新增特征
-    atr_ratio_4h_1h: float = Field(default=0.0, description="4H/1小时 ATR比值")
+    atr_ratio_4h_1h: float = Field(
+        default=0.0, description="ATR(4H)/ATR(1H) cross-timeframe ratio"
+    )
     rsi_divergence_4h: float = Field(default=0.0, description="4小时RSI背离信号")
     
     model_config = ConfigDict(extra="ignore")
@@ -106,27 +110,60 @@ class Feature1D(BaseModel):
 
 
 class FeatureBase(BaseModel):
-    """特征基础字段"""
+    """特征基础字段（价格 label_* / regime_label 已废弃）"""
     timestamp: int = Field(default=0, description="时间戳(毫秒)")
     inst_id: str = Field(default="ETH-USDT-SWAP", description="交易对")
     bar: str = Field(default="1H", description="时间周期")
-    label: Optional[int] = Field(default=None, description="标签(收盘价波动)")
-    label_high: Optional[int] = Field(default=None, description="标签(高点波动)")
-    label_low: Optional[int] = Field(default=None, description="标签(低点波动)")
-    regime_label: Optional[int] = Field(default=None, description="市场结构: 1=TREND_UP 2=TREND_DOWN 3=RANGE")
+    regime_now: Optional[int] = Field(
+        default=None, description="Present structure: 1=UP 2=DOWN 3=RANGE"
+    )
+    regime_48h: Optional[int] = Field(
+        default=None,
+        description="Forward structure at T+REGIME_HORIZON_HOURS (Mongo field name historical)",
+    )
+    regime_horizon_hours: Optional[int] = Field(
+        default=None, description="Horizon used to create forward/transition labels"
+    )
+    transition_endpoint_change: Optional[int] = Field(default=None)
+    transition_confirmed_change: Optional[int] = Field(default=None)
+    transition_confirm_bars: Optional[int] = Field(default=None)
+
+    # Transition model features. All are computed from rows/candles at or before T.
+    price_return_1h: float = 0.0
+    price_return_4h: float = 0.0
+    price_return_12h: float = 0.0
+    adx_4h_delta_3h: float = 0.0
+    adx_4h_delta_6h: float = 0.0
+    adx_4h_delta_12h: float = 0.0
+    di_spread_4h: float = 0.0
+    di_spread_4h_delta_6h: float = 0.0
+    macd_histogram_4h_delta_6h: float = 0.0
+    ema_gap_4h: float = 0.0
+    ema_gap_4h_delta_6h: float = 0.0
+    atr_ratio_4h_1h_delta_6h: float = 0.0
+    rsi_14_1h_delta_6h: float = 0.0
+    bollinger_position_1d_delta_12h: float = 0.0
+    adx_range_margin: float = 0.0
+    adx_trend_margin: float = 0.0
+    atr_ratio_range_margin: float = 0.0
+    regime_age_1h: int = 0
+    regime_switches_24h: int = 0
+    rule_conflict_score: float = 0.0
+    feature_schema_version: str = "transition_v1"
+    dynamic_features_ready: bool = False
 
 
 class Feature(FeatureBase, Feature1H, Feature15M, Feature4H, Feature1D):
     """完整特征数据模型"""
     
     model_config = ConfigDict(
-        extra="ignore",  # 忽略 MongoDB 额外字段
-        populate_by_name=True,  # 允许按字段名填充
+        extra="ignore",  # 忽略 MongoDB 额外字段（含废弃 label_*）
+        populate_by_name=True,
     )
     
     def to_dict(self) -> dict:
-        """转换为字典，兼容 MongoDB 存储"""
-        return self.model_dump(mode='json', exclude_none=False)
+        """Mongo 写入用：省略 None，避免 merge 时写入空 label/regime 字段。"""
+        return self.model_dump(mode="json", exclude_none=True)
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Feature':
@@ -193,7 +230,9 @@ class FeatureCreate(BaseModel):
     shadow_imbalance_1d: float = 0.0
     body_ratio_1d: float = 0.0
     
-    model_config = ConfigDict(extra="ignore")
+    # Preserve newly added transition fields if this legacy construction path
+    # is used; Feature performs the final schema validation.
+    model_config = ConfigDict(extra="allow")
     
     def to_feature(self) -> Feature:
         """转换为 Feature 模型"""

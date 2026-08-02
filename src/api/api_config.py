@@ -3,7 +3,6 @@ Configuration management API endpoints.
 """
 from fastapi import APIRouter, HTTPException, Query
 from collect.config_handler import config_handler
-from config.settings import config
 from typing import Dict, Any
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -28,9 +27,6 @@ def save_config(
     Returns:
         {"success": bool, "message": str}
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
-    
     try:
         result = config_handler.save_config(item=item, key=key, value=value, desc=desc)
         if result:
@@ -56,9 +52,6 @@ def get_config(
     Returns:
         {"item": str, "key": str, "value": str}
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
-    
     try:
         value = config_handler.get_config(item=item, key=key)
         if value is None:
@@ -82,9 +75,6 @@ def list_configs(item: str = Query(None, description="按配置项过滤")) -> D
     Returns:
         {"configs": List[Dict[str, Any]]}
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
-    
     try:
         configs = config_handler.list_configs(item=item)
         return {"configs": configs, "count": len(configs)}
@@ -107,9 +97,6 @@ def delete_config(
     Returns:
         {"success": bool, "message": str}
     """
-    if config.PRODUCTION_MODE:
-        raise HTTPException(status_code=403, detail="This endpoint is disabled in production mode")
-    
     try:
         result = config_handler.delete_config(item=item, key=key)
         if result:

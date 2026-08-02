@@ -14,6 +14,10 @@ from feature.feature_types import Feature
 
 logger = logging.getLogger(__name__)
 
+# Strip on write: legacy price labels + obsolete regime_label alias
+DEPRECATED_FEATURE_FIELDS = ("label", "label_high", "label_low", "regime_label")
+
+
 class FeatureDataHandler(MongoDBBaseHandler):
     """Handler for feature data operations."""
     
@@ -49,10 +53,14 @@ class FeatureDataHandler(MongoDBBaseHandler):
             data_to_save = []
             for item in features_data:
                 if isinstance(item, Feature):
-                    data_to_save.append(item.to_dict())
+                    record = item.to_dict()
                 else:
-                    data_to_save.append(item)
+                    record = dict(item)
+                for key in DEPRECATED_FEATURE_FIELDS:
+                    record.pop(key, None)
+                data_to_save.append(record)
 
+            unset_spec = {k: "" for k in DEPRECATED_FEATURE_FIELDS}
             bulk_ops = [
                 UpdateOne(
                     {
@@ -60,7 +68,7 @@ class FeatureDataHandler(MongoDBBaseHandler):
                         "bar": record["bar"],
                         "timestamp": record["timestamp"],
                     },
-                    {"$set": record},
+                    {"$set": record, "$unset": unset_spec},
                     upsert=True,
                 )
                 for record in data_to_save
@@ -88,7 +96,7 @@ class FeatureDataHandler(MongoDBBaseHandler):
             inst_id: Instrument ID to filter by
             bar: Time interval to filter by
             isNull: Filter for records with null label
-            regime_null: True=仅无 regime_label; False=全部; None=不筛选
+            regime_null: True=仅无 regime_now; False=仅有 regime_now; None=不按 regime 筛
             as_model: Return as List[Feature] instead of List[Dict]
             
         Returns:
@@ -123,11 +131,11 @@ class FeatureDataHandler(MongoDBBaseHandler):
 
             if regime_null is True:
                 query["$or"] = [
-                    {"regime_label": None},
-                    {"regime_label": {"$exists": False}},
+                    {"regime_now": None},
+                    {"regime_now": {"$exists": False}},
                 ]
             elif regime_null is False:
-                query["regime_label"] = {"$exists": True, "$ne": None}
+                query["regime_now"] = {"$exists": True, "$ne": None}
             
             cursor = collection.find(query).sort("timestamp", -1).limit(limit)
             docs = list(cursor)
@@ -232,6 +240,34 @@ class FeatureDataHandler(MongoDBBaseHandler):
             logger.error(f"Failed to get all features: {e}")
             return []
 
+    def get_feature_history(
+        self,
+        inst_id: str,
+        before: int,
+        bar: str = "1H",
+        limit: int = 24,
+    ) -> List[Dict[str, Any]]:
+        """Feature rows strictly before `before`, returned oldest → newest."""
+        try:
+            collection = self._get_collection()
+            if collection is None:
+                return []
+            rows = list(
+                collection.find(
+                    {
+                        "inst_id": inst_id,
+                        "bar": bar,
+                        "timestamp": {"$lt": int(before)},
+                    }
+                )
+                .sort("timestamp", -1)
+                .limit(limit)
+            )
+            return list(reversed(rows))
+        except Exception as e:
+            logger.error("Failed to get feature history: %s", e)
+            return []
+
     def count_features(self, inst_id: str, bar: str = "1H") -> int:
         try:
             collection = self._get_collection()
@@ -243,6 +279,7 @@ class FeatureDataHandler(MongoDBBaseHandler):
             return 0
 
     def count_regime_labeled(self, inst_id: str, bar: str = "1H") -> int:
+        """Count rows with present regime_now."""
         try:
             collection = self._get_collection()
             if collection is None:
@@ -250,15 +287,30 @@ class FeatureDataHandler(MongoDBBaseHandler):
             return collection.count_documents({
                 "inst_id": inst_id,
                 "bar": bar,
-                "regime_label": {"$exists": True, "$ne": None},
+                "regime_now": {"$exists": True, "$ne": None},
             })
         except Exception as e:
             logger.error(f"Failed to count regime labels: {e}")
             return 0
 
+    def count_regime_48h_labeled(self, inst_id: str, bar: str = "1H") -> int:
+        try:
+            collection = self._get_collection()
+            if collection is None:
+                return 0
+            return collection.count_documents({
+                "inst_id": inst_id,
+                "bar": bar,
+                "regime_48h": {"$exists": True, "$ne": None},
+            })
+        except Exception as e:
+            logger.error(f"Failed to count regime_48h labels: {e}")
+            return 0
+
     def get_features_without_regime(
         self, inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 50000
     ) -> List[Dict[str, Any]]:
+        """Features missing present label regime_now."""
         try:
             collection = self._get_collection()
             if collection is None:
@@ -267,8 +319,8 @@ class FeatureDataHandler(MongoDBBaseHandler):
                 "inst_id": inst_id,
                 "bar": bar,
                 "$or": [
-                    {"regime_label": None},
-                    {"regime_label": {"$exists": False}},
+                    {"regime_now": None},
+                    {"regime_now": {"$exists": False}},
                 ],
             }
             cursor = collection.find(query).sort("timestamp", -1).limit(limit)
@@ -278,9 +330,17 @@ class FeatureDataHandler(MongoDBBaseHandler):
             return []
 
     def get_features_for_regime(
-        self, inst_id: str = "ETH-USDT-SWAP", bar: str = "1H", limit: int = 10000
+        self,
+        inst_id: str = "ETH-USDT-SWAP",
+        bar: str = "1H",
+        limit: int = 10000,
+        horizon_hours: Optional[int] = None,
+        confirm_bars: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """获取已标注 regime_label 的特征，按时间正序。"""
+        """
+        Training rows: require confirmed transition label and matching horizon.
+        Sorted ascending by timestamp.
+        """
         try:
             collection = self._get_collection()
             if collection is None:
@@ -288,10 +348,19 @@ class FeatureDataHandler(MongoDBBaseHandler):
             query = {
                 "inst_id": inst_id,
                 "bar": bar,
-                "regime_label": {"$exists": True, "$ne": None},
+                "regime_48h": {"$exists": True, "$ne": None},
+                "regime_now": {"$exists": True, "$ne": None},
+                "transition_confirmed_change": {"$exists": True, "$ne": None},
+                "feature_schema_version": "transition_v1",
+                "dynamic_features_ready": True,
             }
-            cursor = collection.find(query).sort("timestamp", 1).limit(limit)
-            return list(cursor)
+            if horizon_hours is not None:
+                query["regime_horizon_hours"] = int(horizon_hours)
+            if confirm_bars is not None:
+                query["transition_confirm_bars"] = int(confirm_bars)
+            # Train on the most recent `limit` rows, then restore chronology.
+            rows = list(collection.find(query).sort("timestamp", -1).limit(limit))
+            return list(reversed(rows))
         except Exception as e:
             logger.error(f"Failed to get regime features: {e}")
             return []
@@ -299,20 +368,67 @@ class FeatureDataHandler(MongoDBBaseHandler):
     def update_regime_label(
         self, inst_id: str, timestamp: int, regime_label: int, bar: str = "1H"
     ) -> Dict[str, int]:
+        """Writes present label to regime_now only (param name kept for callers)."""
+        return self.update_regime_labels(
+            inst_id=inst_id,
+            timestamp=timestamp,
+            regime_now=regime_label,
+            regime_48h=None,
+            bar=bar,
+            clear_48h=False,
+        )
+
+    def update_regime_labels(
+        self,
+        inst_id: str,
+        timestamp: int,
+        regime_now: int,
+        regime_48h: Optional[int] = None,
+        horizon_hours: Optional[int] = None,
+        endpoint_change: Optional[int] = None,
+        confirmed_change: Optional[int] = None,
+        confirm_bars: Optional[int] = None,
+        bar: str = "1H",
+        clear_48h: bool = False,
+    ) -> Dict[str, int]:
+        """
+        Write dual-track labels: regime_now (+ optional regime_48h).
+        Always $unset obsolete regime_label to avoid ambiguity.
+        """
         try:
             collection = self._get_collection()
             if collection is None:
                 return {"matched": 0, "modified": 0}
+            payload: Dict[str, Any] = {
+                "regime_now": int(regime_now),
+            }
+            if regime_48h is not None:
+                payload["regime_48h"] = int(regime_48h)
+            elif clear_48h:
+                payload["regime_48h"] = None
+            if horizon_hours is not None:
+                payload["regime_horizon_hours"] = int(horizon_hours)
+            if endpoint_change is not None:
+                payload["transition_endpoint_change"] = int(endpoint_change)
+            elif clear_48h:
+                payload["transition_endpoint_change"] = None
+            if confirmed_change is not None:
+                payload["transition_confirmed_change"] = int(confirmed_change)
+            elif clear_48h:
+                payload["transition_confirmed_change"] = None
+            if confirm_bars is not None:
+                payload["transition_confirm_bars"] = int(confirm_bars)
             result = collection.update_one(
                 {"inst_id": inst_id, "timestamp": timestamp, "bar": bar},
-                {"$set": {"regime_label": regime_label}},
+                {"$set": payload, "$unset": {"regime_label": ""}},
             )
             return {
                 "matched": result.matched_count,
                 "modified": result.modified_count,
             }
         except Exception as e:
-            logger.error(f"Failed to update regime_label: {e}")
+            logger.error(f"Failed to update regime labels: {e}")
             return {"matched": 0, "modified": 0}
+
 
 feature_handler = FeatureDataHandler()

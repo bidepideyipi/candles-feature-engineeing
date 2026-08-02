@@ -35,7 +35,7 @@ OKX API → MongoDB (candlesticks / features)
      Redis: SET current · ZADD zwin · XADD only on UP↔DOWN reversal
 ```
 
-Production (`PRODUCTION_MODE=true`) keeps prediction available and disables training/pull endpoints.
+Production (`PRODUCTION_MODE=true`) mainly affects proxy behavior for OKX fetches (proxy is skipped in production). All `/regime` and `/config` endpoints remain available.
 
 ---
 
@@ -86,7 +86,7 @@ Copy `.env.example` to `.env`. Important variables:
 | `REDIS_REGIME_WINDOW_HOURS` | `48` | Sliding window length for `zwin` |
 | `REDIS_REGIME_REVERSAL_CONFIRM` | `2` | Consecutive directional hits to confirm reversal |
 | `REDIS_REGIME_MIN_CONFIDENCE` | `0.65` | Min confidence for directional points in the window |
-| `PRODUCTION_MODE` | `false` | When `true`, pull / pipeline / train / continuity / label return 403 |
+| `PRODUCTION_MODE` | `false` | When `true`, OKX client skips local proxy; API endpoints are not blocked |
 | `SCHEDULE_ENABLED` | `false` | In-process regime scheduler (prefer n8n in production) |
 | `REGIME_MODEL_SAVE_PATH` | `models/regime_model.json` | Regime model artifacts |
 
@@ -96,17 +96,18 @@ Copy `.env.example` to `.env`. Important variables:
 
 All regime routes are under `/regime`. The legacy `/fetch/*` price-signal API has been removed.
 
-| Method | Path | Production | Description |
-|--------|------|------------|-------------|
-| GET | `/health` | yes | Liveness |
-| GET | `/regime/0-stats` | yes | Feature / label coverage + candlestick counts per bar |
-| GET | `/regime/3-predict` | yes | Live regime prediction + Redis update |
-| GET | `/regime/explain-rules` | yes | Rule-engine explanation (no ML) |
-| GET | `/regime/pull-history` | no | Pull one bar’s history from OKX |
-| GET | `/regime/check-continuity` | no | Continuity check for 15m/1H/4H/1D |
-| GET | `/regime/pipeline` | no | End-to-end train pipeline |
-| GET | `/regime/1-label` | no | Apply regime labels to features |
-| GET | `/regime/2-train` | no | Train regime model |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Liveness |
+| GET | `/regime/0-stats` | Feature / label coverage + candlestick counts per bar |
+| GET | `/regime/3-predict` | Live regime prediction + Redis update |
+| GET | `/regime/explain-rules` | Rule-engine explanation (no ML) |
+| GET | `/regime/pull-history` | Pull one bar’s history from OKX |
+| GET | `/regime/check-continuity` | Continuity check for 15m/1H/4H/1D |
+| GET | `/regime/merge-features` | Candlesticks → 1H feature rows |
+| GET | `/regime/pipeline` | End-to-end: pull → continuity → merge → label → train |
+| GET | `/regime/1-label` | Apply dual regime labels to features |
+| GET | `/regime/2-train` | Train calibrated continue/change risk model |
 
 ### Recommended training flow
 
@@ -124,11 +125,16 @@ curl 'http://127.0.0.1:8000/regime/pull-history?bar=1H&max_records=2400'
 
 curl 'http://127.0.0.1:8000/regime/check-continuity?inst_id=ETH-USDT-SWAP'
 
-# Merge + label + train are inside /regime/pipeline;
-# stepwise label/train after features exist:
-curl 'http://127.0.0.1:8000/regime/1-label?only_fix_none=true'
-curl 'http://127.0.0.1:8000/regime/2-train?limit=10000&test_ratio=0.2'
+# Stepwise (same order as /regime/pipeline internals):
+curl 'http://127.0.0.1:8000/regime/merge-features?limit=20000'
+curl 'http://127.0.0.1:8000/regime/1-label?horizon_hours=12&only_fix_none=false&limit=20000'
+curl 'http://127.0.0.1:8000/regime/2-train?horizon_hours=12&limit=18000&test_ratio=0.2'
 ```
+
+Training uses confirmed-change labels, purged walk-forward validation, Platt
+probability calibration, **per-`present` regime thresholds/gates**, and one
+untouched holdout. Weak subgroups (e.g. `TREND_DOWN`) can keep `p_change` but
+disable model alerts. Re-run merge + full labeling after schema/horizon changes.
 
 ### Live prediction
 
@@ -143,11 +149,34 @@ Example response (shape):
 ```json
 {
   "type": "regime",
-  "regime": 3,
-  "regime_label": "RANGE",
-  "recommended_strategy": "grid",
-  "confidence": 0.58,
-  "probabilities": { "1": 0.2, "2": 0.22, "3": 0.58 },
+  "target": "continue_change",
+  "horizon_hours": 12,
+  "model_gate_passed": true,
+  "present": {
+    "regime": 1,
+    "regime_label": "TREND_UP",
+    "source": "rules",
+    "recommended_strategy": "default"
+  },
+  "transition": {
+    "source": "model",
+    "prediction": "CHANGE",
+    "p_continue": 0.28,
+    "p_change": 0.72,
+    "threshold": 0.66,
+    "model_gate_passed": true,
+    "alert_eligible": true
+  },
+  "derived": {
+    "continues": false,
+    "changes": true,
+    "p_continue": 0.28,
+    "p_change": 0.72
+  },
+  "regime": 1,
+  "regime_label": "TREND_UP",
+  "recommended_strategy": "default",
+  "confidence": 0.72,
   "price": 1880.0,
   "inst_id": "ETH-USDT-SWAP",
   "redis": {
@@ -161,6 +190,10 @@ Example response (shape):
 }
 ```
 
+`present` is deterministic rules now. `transition` is the calibrated probability
+of a confirmed structure change within `horizon_hours`; it does not predict the
+destination regime. Flat `regime*` fields mirror `present`. Model transition
+alerts are enabled only when the untouched holdout gate passed.
 ---
 
 ## Redis: current regime and `zwin` sliding window
@@ -169,7 +202,8 @@ Example response (shape):
 
 1. **Always** `SET` the latest regime snapshot  
 2. **Always** append into a time-bounded ZSET window (`zwin`)  
-3. **Only** `XADD` to `regime_signals` when an **UP ↔ DOWN** reversal is confirmed  
+3. **Only** `XADD` when an **UP ↔ DOWN** reversal is confirmed, or when a gated
+   transition model emits eligible high `p_change` risk
 
 ### Keys
 
@@ -253,8 +287,6 @@ models/regime_model_scaler.pkl
 models/regime_model_features.json
 ```
 
-With `PRODUCTION_MODE=true`, use a separate training instance (`PRODUCTION_MODE=false`) for `/regime/pipeline` and pull/label/train.
-
 More ops detail: [`DEPLOYMENT.md`](DEPLOYMENT.md) (some sections may still mention legacy `/fetch` paths; prefer this README for the current API).
 
 ---
@@ -311,7 +343,6 @@ Use n8n for cron-driven calls to `/regime/3-predict`, health checks, and trainin
 |-------|----------------|
 | `Failed to extract features` (`from_local=true`) | Mongo candlesticks exist and are recent; continuity OK; API restarted after feature-merge sort fix |
 | `Regime model not found` | Run `/regime/pipeline` or `/regime/2-train`; ensure files under `models/` |
-| Training endpoints 403 | `PRODUCTION_MODE=true` — use a training instance |
 | No Stream messages | Expected unless UP↔DOWN reversal confirmed; check `redis.reversal_*` in predict response and `zwin` contents |
 | n8n `File is not defined` / `command start not found` | Upgrade Node to 20+ or 22 and reinstall n8n |
 

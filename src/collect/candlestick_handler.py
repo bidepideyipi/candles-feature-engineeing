@@ -113,6 +113,53 @@ class CandlestickDataHandler(MongoDBBaseHandler):
             logger.error(f"Failed to retrieve candlestick data: {e}")
             return []
     
+    def get_candlestick_range(
+        self,
+        inst_id: str,
+        bar: str,
+        start_ts: int,
+        end_ts: int,
+        projection: Optional[Dict[str, int]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Load candles with start_ts <= timestamp < end_ts, ascending.
+
+        Used by FeatureMerge bulk path to avoid per-row Mongo round-trips.
+        """
+        try:
+            collection = self._get_collection()
+            if collection is None:
+                return []
+            query = {
+                "inst_id": inst_id,
+                "bar": bar,
+                "timestamp": {"$gte": int(start_ts), "$lt": int(end_ts)},
+            }
+            proj = projection
+            if proj is None:
+                proj = {
+                    "_id": 0,
+                    "timestamp": 1,
+                    "open": 1,
+                    "high": 1,
+                    "low": 1,
+                    "close": 1,
+                    "volume": 1,
+                    "inst_id": 1,
+                    "bar": 1,
+                    "record_dt": 1,
+                    "record_hour": 1,
+                    "day_of_week": 1,
+                    "confirm": 1,
+                }
+            rows = list(
+                collection.find(query, proj).sort("timestamp", 1)
+            )
+            return [row for row in rows if int(row.get("confirm", 1)) == 1]
+        except Exception as e:
+            logger.error("Failed to retrieve candlestick range: %s", e)
+            return []
+
     def get_latest_timestamp(self, inst_id: str = None, bar: str = None) -> Optional[int]:
         """
         Get the latest timestamp from stored candlestick data.
