@@ -44,11 +44,11 @@ def test_walkforward_training_and_reload(monkeypatch, tmp_path):
         limit=700,
         test_ratio=0.2,
         class_weight="none",
-        horizon_hours=12,
         holdout_start_ts=rows[560]["timestamp"],
     )
 
     assert result["target"] == "continue_change"
+    assert result["horizon_hours"] == 12
     assert result["purge_rows"] == 12
     assert result["holdout_start_ts"] == rows[560]["timestamp"]
     assert len(result["walk_forward"]["candidate_modes"]["none"]["folds"]) >= 2
@@ -68,3 +68,37 @@ def test_walkforward_training_and_reload(monkeypatch, tmp_path):
     meta["label_version"] = "endpoint_change_legacy"
     meta_path.write_text(json.dumps(meta))
     assert RegimeTrainer(str(model_path)).load_model() is False
+
+
+def test_train_rejects_mixed_horizons_without_explicit_choice(monkeypatch, tmp_path):
+    rows = []
+    for i in range(600):
+        change = int((i % 10) >= 6)
+        row = {column: 0.0 for column in REGIME_FEATURE_COLUMNS}
+        row.update(
+            {
+                "timestamp": 1_700_000_000_000 + i * 3_600_000,
+                "inst_id": "ETH-USDT-SWAP",
+                "bar": "1H",
+                "regime_now": 3,
+                "regime_48h": 1 if change else 3,
+                "regime_horizon_hours": 8 if i < 300 else 12,
+                "transition_confirm_bars": 2,
+                "transition_confirmed_change": change,
+                "feature_schema_version": "transition_v1",
+                "dynamic_features_ready": True,
+            }
+        )
+        rows.append(row)
+
+    monkeypatch.setattr(
+        trainer_module.feature_handler,
+        "get_features_for_regime",
+        lambda **_kwargs: rows,
+    )
+    trainer = RegimeTrainer(str(tmp_path / "mixed.json"))
+    try:
+        trainer.train_model(limit=600, test_ratio=0.2, class_weight="none")
+        assert False, "expected ValueError for mixed horizons"
+    except ValueError as exc:
+        assert "multiple horizons" in str(exc)

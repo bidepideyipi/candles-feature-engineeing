@@ -326,16 +326,18 @@ class RegimeTrainer:
         horizon_hours: Optional[int] = None,
         holdout_start_ts: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Purged walk-forward train, calibrate on OOF, evaluate once on holdout."""
-        if horizon_hours is not None:
-            self.horizon_hours = int(horizon_hours)
-            self._labeler = RegimeLabeler(horizon_hours=self.horizon_hours)
+        """Purged walk-forward train, calibrate on OOF, evaluate once on holdout.
 
+        Horizon is taken from labeled features (`regime_horizon_hours`), not from
+        env alone. Pass `horizon_hours` only to disambiguate when Mongo still
+        contains multiple label horizons.
+        """
         rows = feature_handler.get_features_for_regime(
             inst_id=inst_id,
             bar=bar,
             limit=limit,
-            horizon_hours=self.horizon_hours,
+            # Do not pre-filter by caller/env horizon; resolve from labels.
+            horizon_hours=None,
             confirm_bars=getattr(config, "REGIME_CHANGE_CONFIRM_BARS", 2),
         )
         if not rows or len(rows) < 500:
@@ -349,13 +351,45 @@ class RegimeTrainer:
                 "regime_horizon_hours",
             ]
         )
+        horizons = sorted(
+            {int(h) for h in df["regime_horizon_hours"].astype(int).tolist()}
+        )
+        if not horizons:
+            raise ValueError(
+                "no regime_horizon_hours on labeled features; "
+                "run /regime/1-label?only_fix_none=false"
+            )
+        if horizon_hours is not None:
+            requested = int(horizon_hours)
+            if requested not in horizons:
+                raise ValueError(
+                    f"requested horizon_hours={requested} not found in labels "
+                    f"(available={horizons}); re-run /regime/1-label first"
+                )
+            if len(horizons) > 1:
+                logger.warning(
+                    "Multiple label horizons %s in training window; "
+                    "using explicit horizon_hours=%s",
+                    horizons,
+                    requested,
+                )
+            self.horizon_hours = requested
+        elif len(horizons) == 1:
+            self.horizon_hours = int(horizons[0])
+        else:
+            raise ValueError(
+                f"labeled features contain multiple horizons {horizons}; "
+                "re-run /regime/1-label?only_fix_none=false with one horizon, "
+                "or pass horizon_hours to select one"
+            )
+        self._labeler = RegimeLabeler(horizon_hours=self.horizon_hours)
         df = df[
             df["regime_horizon_hours"].astype(int) == self.horizon_hours
         ].sort_values("timestamp").reset_index(drop=True)
         if len(df) < 500:
             raise ValueError(
-                "no sufficient labels matching requested horizon; "
-                "run /regime/1-label?only_fix_none=false first"
+                f"insufficient labels for horizon={self.horizon_hours} "
+                f"({len(df)} rows); re-run /regime/1-label?only_fix_none=false"
             )
 
         if (

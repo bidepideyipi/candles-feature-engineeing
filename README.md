@@ -128,7 +128,7 @@ curl 'http://127.0.0.1:8000/regime/check-continuity?inst_id=ETH-USDT-SWAP'
 # Stepwise (same order as /regime/pipeline internals):
 curl 'http://127.0.0.1:8000/regime/merge-features?limit=20000'
 curl 'http://127.0.0.1:8000/regime/1-label?horizon_hours=12&only_fix_none=false&limit=20000'
-curl 'http://127.0.0.1:8000/regime/2-train?horizon_hours=12&limit=18000&test_ratio=0.2'
+curl 'http://127.0.0.1:8000/regime/2-train?limit=18000&test_ratio=0.2'
 ```
 
 Training uses confirmed-change labels, purged walk-forward validation, Platt
@@ -137,6 +137,9 @@ untouched holdout. Weak subgroups (e.g. `TREND_DOWN`) can keep `p_change` but
 disable model alerts. Re-run merge + full labeling after schema/horizon changes.
 
 ### Live prediction
+
+详细训练响应字段：[`docs/regime_2_train_response_guide.md`](docs/regime_2_train_response_guide.md)。  
+详细预测响应字段：[`docs/regime_3_predict_response_guide.md`](docs/regime_3_predict_response_guide.md)。
 
 ```bash
 curl -s 'http://127.0.0.1:8000/regime/3-predict?from_local=true' | python -m json.tool

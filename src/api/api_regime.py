@@ -200,7 +200,10 @@ def train_regime_model(
         None,
         ge=1,
         le=168,
-        description="Must match labeling horizon used for regime_48h",
+        description=(
+            "Optional. Usually omit: train reads regime_horizon_hours from "
+            "labels. Only pass to disambiguate when multiple horizons exist."
+        ),
     ),
     holdout_start_ts: Optional[int] = Query(
         None,
@@ -209,9 +212,8 @@ def train_regime_model(
     ),
 ) -> Dict[str, Any]:
     """
-    Train XGBoost binary continue/change:
-    change := regime_fwd != regime_now over horizon.
-    Beats always-CONTINUE baseline is the primary gate.
+    Train XGBoost binary continue/change from labeled features.
+    Horizon comes from /regime/1-label output (regime_horizon_hours).
     """
     try:
         results = regime_trainer.train_model(
@@ -250,7 +252,13 @@ def predict_regime(from_local: bool = True) -> Dict[str, Any]:
         else feature_merge.quick_process_eth()
     )
     if features is None:
-        raise HTTPException(status_code=404, detail="Failed to extract features")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Failed to extract features for predict. "
+                "Check OKX/Mongo candle coverage and multi-timeframe alignment."
+            ),
+        )
 
     payload = regime_trainer.build_prediction_payload(features)
     redis_meta = redis_stream_handler.publish_regime(payload)

@@ -117,13 +117,9 @@ class OKExDataFetcher:
             inst_id: Instrument ID (e.g., "ETH-USDT-SWAP", "BTC-USDT-SWAP")
             
         Returns:
-            Dict with 4 timeframes, each containing 48 candlestick records:
-            {
-                "15m": List[List[str]],
-                "1H": List[List[str]],
-                "4H": List[List[str]],
-                "1D": List[List[str]]
-            }
+            Dict with 4 timeframes of recent OKX candles (newest first).
+            Includes the current unconfirmed (confirm=0) bar so realtime
+            predict stays live; FeatureMerge keeps that bar.
         """
         # Use provided inst_id or default ETH-USDT-SWAP
         instrument_id = inst_id or 'ETH-USDT-SWAP'

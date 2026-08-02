@@ -524,8 +524,8 @@ class FeatureMerge:
         converted = []
         for candle in candles:
             try:
-                if len(candle) > 8 and int(candle[8]) != 1:
-                    continue
+                # Keep the live (confirm=0) bar for realtime prediction so
+                # features reflect the current incomplete candle.
                 timestamp = int(candle[0])
                 dt = datetime.fromtimestamp(timestamp / 1000)
                 
